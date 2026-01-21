@@ -2,6 +2,6 @@ streamlit
 openai
 newspaper3k
 lxml_html_clean
+reportlab
 requests
 python-dotenv
-reportlab
