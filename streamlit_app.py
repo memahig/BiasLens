@@ -1,41 +1,45 @@
 import streamlit as st
 import openai
+from newspaper import Article
+import os
 
-# 1. Setup Page Title
-st.set_page_config(page_title="BiasLens", page_icon="🛡️")
-
-st.title("🛡️ BIASLENS: Epistemic Integrity System")
-st.write("Analyze articles for bias and hidden context using AI.")
-
-# 2. Get the API Key from Streamlit Secrets
-# This matches the name you put in the "Secrets" box
-try:
+# 1. Setup API Key (Pulling from Streamlit Secrets)
+if "OPENAI_API_KEY" in st.secrets:
     openai.api_key = st.secrets["OPENAI_API_KEY"]
-except:
-    st.error("OpenAI API Key not found. Please check your Streamlit Secrets.")
+else:
+    # Fallback for local testing (uses your .env.txt on your Mac)
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# 3. The User Interface
-text_to_scan = st.text_area("Paste your article below:", height=300)
+st.title("BiasLens: News Analysis Tool")
+st.write("Paste a news URL below to analyze it for bias.")
 
-if st.button("Start Audit"):
-    if not text_to_scan.strip():
-        st.warning("Please paste some text first!")
-    else:
-        with st.spinner("Analyzing claims and checking context..."):
-            try:
-                # Use OpenAI to do the work
-                response = openai.chat.completions.create(
-                    model="gpt-4o",
+# 2. URL Input
+url = st.text_input("Enter News URL:")
+
+if url:
+    try:
+        # 3. Scraping the Article
+        with st.spinner('Scraping article content...'):
+            article = Article(url)
+            article.download()
+            article.parse()
+            text = article.text
+        
+        st.success("Article successfully scraped!")
+        st.subheader(f"Title: {article.title}")
+
+        # 4. AI Analysis
+        if st.button("Analyze Bias"):
+            with st.spinner('AI is analyzing the text...'):
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": "You are a bias-detection expert. Extract key claims and audit them for integrity, identifying facts vs opinions."},
-                        {"role": "user", "content": text_to_scan}
+                        {"role": "system", "content": "You are an expert in media bias and political science."},
+                        {"role": "user", "content": f"Analyze the following news text for political bias, tone, and framing. Provide a concise summary:\n\n{text[:3000]}"}
                     ]
                 )
-                
-                report = response.choices[0].message.content
-                
-                st.subheader("📢 FINAL BIASLENS INTELLIGENCE REPORT")
-                st.markdown(report)
-                
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+                analysis = response.choices[0].message.content
+                st.write(analysis)
+
+    except Exception as e:
+        st.error(f"Error: {e}")
