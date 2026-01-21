@@ -1,4 +1,12 @@
+# Secrets and Keys
 .env
 .env.txt
-.env
 .streamlit/secrets.toml
+
+# Environment and Tools
+venv/
+__pycache__/
+.DS_Store
+
+# Scraper Cache
+.newspaper_cache/
