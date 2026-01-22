@@ -60,21 +60,23 @@ if st.button("Run Full Audit", type="primary"):
             st.json(st.session_state.evidence)
 
         with col2:
-            st.subheader("📝 Final Audit Report")
-            data = st.session_state.evidence
-            
-            # This logic now matches the names in your engine.py exactly
-            if isinstance(data, dict) and "key_claims" in data:
-                for claim in data["key_claims"]:
-                    with st.expander(f"Claim: {claim['claim'][:60]}...", expanded=True):
-                        st.write(f"**The Claim:** {claim['claim']}")
-                        st.write(f"**Supporting Evidence:**")
-                        
-                        target_ids = claim.get('evidence_eids', [])
-                        for item in data.get("evidence_bank", []):
-                            if item['eid'] in target_ids:
-                                st.info(f"\"{item['quote']}\"")
-            else:
-                st.warning("Could not render report. Check JSON on left.")
+          # --- THE PRODUCTION REPORT ---
+        st.subheader("📝 Final Audit Report")
+        
+        audit_data = st.session_state.get("audit", {})
+        if "audit_results" in audit_data:
+            for item in audit_data["audit_results"]:
+                # The expander title now shows the Score immediately
+                with st.expander(f"[{item['score']}/10] Audit: {item['claim'][:60]}...", expanded=True):
+                    col_a, col_b = st.columns([3, 1])
+                    with col_a:
+                        # We use st.warning to make the bias stand out
+                        st.warning(f"**Audit Findings:** {item['bias_detected']}")
+                        st.info(f"**Auditor Deep-Dive:** {item['notes']}")
+                    with col_b:
+                        # A visual metric for the objectivity score
+                        st.metric("Objectivity", f"{item['score']}/10")
+        else:
+            st.error("Audit Logic failed to return results. Check Debug Mode below.")
     else:
         st.warning("Please provide input.")
