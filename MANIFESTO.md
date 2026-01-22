@@ -1,81 +1,255 @@
-import streamlit as st
-import scraper  
-import engine   
-import json
 
-st.set_page_config(page_title="BiasLens", page_icon="🛡️", layout="wide")
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.title("⚙️ Settings")
-    analysis_depth = st.radio("Analysis Depth", ["Overview", "In-Depth Audit", "Sentence-by-Sentence"])
-    st.divider()
-    if st.button("Clear Session"):
-        st.session_state.clear()
-        st.rerun()
+🛡️ BIASLENS — EPISTEMIC AUDIT SYSTEM
+MANIFESTO / MEMORY ANCHOR
+Last locked: 2026-01-21
 
-# --- AUTH ---
-if "authenticated" not in st.session_state:
-    password = st.text_input("Passkey", type="password")
-    if password == st.secrets["APP_PASSWORD"]:
-        st.session_state.authenticated = True
-        st.rerun()
-    else:
-        st.stop()
+This document is the authoritative design constitution for BiasLens.
+All code, prompts, schemas, and AI behavior MUST conform to this file.
 
-# --- MAIN UI ---
-st.title("🛡️ BiasLens: Epistemic Audit")
-tab1, tab2 = st.tabs(["Link to Article", "Paste Text Manually"])
-with tab1:
-    url = st.text_input("Article URL")
-with tab2:
-    manual_text = st.text_area("Paste text here", height=400)
+BiasLens is not a “bias detector.”
+BiasLens is an EVIDENCE-INDEXED EPISTEMIC AUDIT SYSTEM.
 
-if st.button("Run Full Audit", type="primary"):
-    content = ""
-    if url:
-        with st.status("🔍 Scraping...") as s:
-            result = scraper.scrape_url(url)
-            content = result.text if result.success else ""
-            s.update(label="Loaded!", state="complete")
-    elif manual_text:
-        content = manual_text
+────────────────────────────────
+CORE IDENTITY
+────────────────────────────────
 
-    if content:
-        # STEP 1: Pass A (The Data)
-        with st.status("🏗️ Building Evidence Bank...") as s:
-            raw_a = engine.run_pass_a(content)
-            st.session_state.evidence = json.loads(raw_a)
-            s.update(label="Evidence Ready", state="complete")
+BiasLens exists to evaluate the INFORMATION INTEGRITY of articles.
 
-        # STEP 2: Pass B (The Audit Logic)
-        with st.status("⚖️ Performing Bias Audit...") as s:
-            # We send the JSON from Pass A into Pass B
-            raw_b = engine.run_pass_b(json.dumps(st.session_state.evidence), analysis_depth)
-            st.session_state.audit = json.loads(raw_b)
-            s.update(label="Audit Complete!", state="complete")
+It audits:
+• factual grounding
+• evidence discipline
+• reasoning structure
+• contextual completeness
+• proportionality of language
+• influence and framing risks
 
-        st.divider()
+BiasLens does NOT:
+• infer intent
+• assign political motives
+• label authors
+• generate unsupported claims
+• issue uncited findings
 
-        # --- THE CLEAN PRODUCTION REPORT ---
-        st.subheader("📝 Final Audit Report")
-        
-        audit_data = st.session_state.audit
-        if "audit_results" in audit_data:
-            for item in audit_data["audit_results"]:
-                with st.expander(f"Audit: {item['claim'][:80]}...", expanded=True):
-                    col_a, col_b = st.columns([3, 1])
-                    with col_a:
-                        st.write(f"**Bias Detected:** {item['bias_detected']}")
-                        st.info(f"**Auditor Notes:** {item['notes']}")
-                    with col_b:
-                        st.metric("Objectivity Score", f"{item['score']}/10")
-        
-        st.divider()
+All severity is framed ONLY as:
+→ “Information Integrity Concern”
 
-        # --- DEBUGGER (Hidden at the bottom) ---
-        with st.expander("🛠️ View Raw Evidence Bank (Debug Mode)"):
-            st.json(st.session_state.evidence)
-            
-    else:
-        st.warning("Please provide input.")
+Never “quality,” “score,” or “grade.”
+
+────────────────────────────────
+ARCHITECTURAL LOCK
+────────────────────────────────
+
+BiasLens is a TWO-PASS SYSTEM.
+
+It is forbidden to collapse this into a single prompt.
+
+────────────
+PASS A — EVIDENCE-INDEXED EXTRACTION
+(Ground Truth Layer)
+────────────
+
+Purpose:
+Build a hard evidence surface BEFORE analysis.
+
+Outputs:
+
+evidence_bank[] = {
+  eid,
+  quote,                // verbatim article text
+  start_char,
+  end_char,
+  why_relevant
+}
+
+key_claims[] = {
+  claim_id,
+  claim_text,
+  evidence_eids[]
+}
+
+Rules:
+• All quotes MUST be verbatim.
+• All claims MUST reference evidence_eids.
+• NO analysis.
+• NO bias findings.
+• NO speculation.
+
+This layer is the ONLY allowed source of truth.
+
+────────────
+PASS B — CONSTRAINED AUDIT LAYER
+────────────
+
+Purpose:
+Perform epistemic analysis strictly constrained to Pass A.
+
+Hard rules:
+• EVERY finding MUST reference evidence_eids.
+• If no supporting quote exists → the finding is forbidden.
+• Uncertain cases → mark “Unclear” + what_to_check_next.
+• App-side validator removes uncited findings.
+
+All analytic modules consume ONLY Pass A outputs.
+
+────────────────────────────────
+FINDING TYPES (LOCKED TAXONOMY)
+────────────────────────────────
+
+BiasLens audits the following categories only:
+
+1. Core Truthfulness
+2. Evidence & Attribution Discipline
+3. Systematic Omission
+   → framed ONLY as “absence of expected context”
+4. Context & Proportionality
+   (internal name: Contextual Proportionality)
+5. Reality-Anchored Language Evaluation
+   (public-facing name)
+6. Logical Structure & Argument Quality
+7. Influence / Framing Signals
+8. Internal Consistency
+
+Omission is NEVER framed as intent, motive, or deception.
+
+────────────────────────────────
+EVIDENCE ENFORCEMENT
+────────────────────────────────
+
+Every analytic object must include:
+
+• evidence_eids[]
+• optional evidence_quote
+• optional evidence_location
+
+Forbidden:
+• free-floating claims
+• uncited logic findings
+• uncited summaries
+• analyst intuition
+
+“No finding without evidence” is the highest system law.
+
+────────────────────────────────
+REPORT SYSTEM (TWO VIEWS, ONE DATASET)
+────────────────────────────────
+
+BiasLens always generates ONE structured audit dataset.
+
+It is rendered into TWO reports.
+
+────────────
+OVERVIEW REPORT (Public)
+────────────
+
+Purpose:
+Fast epistemic risk scan.
+
+Contains:
+• Overall Information Integrity concern profile
+• Highest-risk findings only
+• Short evidence-backed explanations
+• No deep logic maps
+
+Think:
+“nutrition label + executive summary”
+
+────────────
+IN-DEPTH REPORT (Expert)
+────────────
+
+Purpose:
+Forensic epistemic audit.
+
+Adds:
+
+ARGUMENT MAP
+argument_map[] = {
+  conclusion,
+  premises[],
+  assumptions[],
+  counterpoints_missing[],
+  evidence_eids[]
+}
+
+LOGIC AUDITS
+logic_audits[] = {
+  pattern,
+  mechanism,
+  risk,
+  concern,
+  evidence_eids[]
+}
+
+Includes:
+• full findings
+• full evidence links
+• instance-level logic audits
+• validation notes
+
+Think:
+“inspectable epistemic model”
+
+────────────────────────────────
+GENERAL SUMMARY RULE
+────────────────────────────────
+
+The General Summary is NOT free-form.
+
+It is mechanically generated from:
+• highest-concern findings
+• argument map conclusions
+• repeated risk patterns
+• validator output
+
+Rule:
+The summary may ONLY restate supported findings.
+No new claims. No new analysis.
+
+────────────────────────────────
+SEVERITY SCALE (LOCKED)
+────────────────────────────────
+
+🟢 Low concern  
+🟡 Moderate concern  
+🟠 Elevated concern  
+🔴 High concern  
+
+Scale always means:
+→ “Information Integrity Concern Level”
+
+Never quality, reliability, or intent.
+
+────────────────────────────────
+DESIGN PHILOSOPHY
+────────────────────────────────
+
+BiasLens is designed to transition from:
+
+“LLM writes a bias report”
+
+to:
+
+“System builds an evidence-indexed epistemic model and renders views.”
+
+The model proposes.
+The system constrains.
+The evidence governs.
+
+BiasLens is an information integrity instrument, not a commentator.
+
+────────────────────────────────
+DEVELOPER WARNING
+────────────────────────────────
+
+Any code or prompt that:
+• skips Pass A
+• allows uncited findings
+• collapses reports into one view
+• infers intent
+• weakens omission handling
+• removes evidence IDs
+
+is a SYSTEM REGRESSION.
+
+This file overrides all other instructions.

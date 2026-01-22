@@ -1,6 +1,6 @@
-
 import openai
 import streamlit as st
+import json
 
 def call_llm(system_prompt, user_content):
     client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -15,40 +15,41 @@ def call_llm(system_prompt, user_content):
     return response.choices[0].message.content
 
 def run_pass_a(article_text):
-    """Extraction Phase: Builds the Evidence Bank"""
+    """PASS A: GROUND TRUTH EXTRACTION (MANIFESTO LOCK)"""
     prompt = """
-    You are the Ground Truth Layer of BiasLens. 
-    Extract 5-8 verbatim quotes that represent the core pillars of this article.
-    Return ONLY a JSON object:
+    You are the Ground Truth Layer of BiasLens. Build a hard evidence surface.
+    Return ONLY JSON:
     {
       "evidence_bank": [{"eid": "E1", "quote": "...", "why_relevant": "..."}],
-      "key_claims": [{"claim": "...", "evidence_eids": ["E1"]}]
+      "key_claims": [{"claim_id": "C1", "claim_text": "...", "evidence_eids": ["E1"]}]
     }
+    Rules: Verbatim quotes only. No analysis.
     """
     return call_llm(prompt, article_text)
 
-def run_pass_b(evidence_json, depth):
-    """Analysis Phase: Performs a high-contrast Bias Audit"""
-    prompt = f"""
-    You are the Aggressive Auditor for BiasLens. 
-    Your job is to find what the author is hiding or how they are manipulating the reader.
-    Analyze the following evidence for a {depth} report.
-    
-    CRITERIA:
-    - BIAS: Identify framing, loaded language, or cherry-picked data.
-    - FALLACY: Identify 'Straw Man', 'Ad Hominem', or 'Appeal to Emotion'.
-    - RATING: 1 (Highly Manipulative) to 10 (Purely Objective).
-
-    Return ONLY a JSON object:
-    {{
+def run_pass_b(pass_a_json):
+    """PASS B: CONSTRAINED AUDIT LAYER (MANIFESTO LOCK)"""
+    prompt = """
+    You are the Epistemic Auditor. Audit the Evidence Bank strictly.
+    Return ONLY JSON matching this forensic schema:
+    {
       "audit_results": [
-        {{
-          "claim": "...",
-          "bias_detected": "FALLACY DETECTED: [Name it here]. [Describe the manipulation]",
-          "score": 5,
-          "notes": "Critique the evidence quality here."
-        }}
-      ]
-    }}
+        {
+          "category": "1-8 from Taxonomy",
+          "concern_level": "Low/Moderate/Elevated/High concern",
+          "finding": "...",
+          "evidence_eids": ["E1"],
+          "logic_check": "pattern mechanism"
+        }
+      ],
+      "argument_map": {
+        "conclusion": "...",
+        "premises": ["..."],
+        "assumptions": ["..."],
+        "counterpoints_missing": ["..."],
+        "evidence_eids": ["E1"]
+      },
+      "general_summary": "Mechanical restatement only."
+    }
     """
-    return call_llm(prompt, evidence_json)
+    return call_llm(prompt, pass_a_json)

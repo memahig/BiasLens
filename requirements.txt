@@ -4,3 +4,4 @@ python-dotenv
 requests
 trafilatura
 fpdf2
+beautifulsoup4
