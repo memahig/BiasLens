@@ -42,41 +42,39 @@ if st.button("Run Full Audit", type="primary"):
     elif manual_text:
         content = manual_text
 
+    # --- THIS BLOCK MUST BE ALIGNED WITH THE BUTTON LOGIC ---
     if content:
+        # STEP 1: Pass A
         with st.status("🏗️ Building Evidence Bank...") as s:
-            raw_response = engine.run_pass_a(content)
-            try:
-                # Engine returns a string; we must convert to a dictionary
-                st.session_state.evidence = json.loads(raw_response)
-            except:
-                st.session_state.evidence = raw_response
+            raw_a = engine.run_pass_a(content)
+            st.session_state.evidence = json.loads(raw_a)
             s.update(label="Evidence Ready", state="complete")
 
+        # STEP 2: Pass B
+        with st.status("⚖️ Performing Bias Audit...") as s:
+            raw_b = engine.run_pass_b(json.dumps(st.session_state.evidence), analysis_depth)
+            st.session_state.audit = json.loads(raw_b)
+            s.update(label="Audit Complete!", state="complete")
+
         st.divider()
-        col1, col2 = st.columns([1, 2])
 
-        with col1:
-            st.subheader("📍 Evidence Bank")
-            st.json(st.session_state.evidence)
-
-        with col2:
-          # --- THE PRODUCTION REPORT ---
+        # --- THE PRODUCTION REPORT ---
         st.subheader("📝 Final Audit Report")
         
         audit_data = st.session_state.get("audit", {})
         if "audit_results" in audit_data:
             for item in audit_data["audit_results"]:
-                # The expander title now shows the Score immediately
                 with st.expander(f"[{item['score']}/10] Audit: {item['claim'][:60]}...", expanded=True):
                     col_a, col_b = st.columns([3, 1])
                     with col_a:
-                        # We use st.warning to make the bias stand out
                         st.warning(f"**Audit Findings:** {item['bias_detected']}")
                         st.info(f"**Auditor Deep-Dive:** {item['notes']}")
                     with col_b:
-                        # A visual metric for the objectivity score
                         st.metric("Objectivity", f"{item['score']}/10")
-        else:
-            st.error("Audit Logic failed to return results. Check Debug Mode below.")
+        
+        # --- DEBUGGER (Optional) ---
+        with st.expander("🛠️ View Raw Evidence"):
+            st.json(st.session_state.evidence)
+            
     else:
         st.warning("Please provide input.")
