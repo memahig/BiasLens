@@ -1,7 +1,8 @@
+
 streamlit
 openai
-python-dotenv
-requests
 trafilatura
 fpdf2
+python-dotenv
 beautifulsoup4
+requests

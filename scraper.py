@@ -1,20 +1,23 @@
 import trafilatura
 
+
 class ScrapeResult:
-    def __init__(self, text, success):
+    def __init__(self, text: str, success: bool):
         self.text = text
         self.success = success
 
-def scrape_url(url):
+
+def scrape_url(url: str) -> ScrapeResult:
     try:
-        # Trafilatura handles the request and the cleaning in one go
         downloaded = trafilatura.fetch_url(url)
-        # extract() removes the "junk" like navbars and ads
+        if not downloaded:
+            return ScrapeResult("Could not download URL (possibly blocked or requires JS/login).", False)
+
         text = trafilatura.extract(downloaded)
-        
-        if text:
-            return ScrapeResult(text, True)
-        else:
-            return ScrapeResult("Could not extract text from this URL.", False)
+        if text and text.strip():
+            return ScrapeResult(text.strip(), True)
+
+        return ScrapeResult("Downloaded page but could not extract readable article text.", False)
+
     except Exception as e:
-        return ScrapeResult(str(e), False)
+        return ScrapeResult(f"Scrape exception: {e}", False)
