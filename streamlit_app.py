@@ -1,10 +1,11 @@
 
-import json
 import hmac
+import json
 import streamlit as st
 
 import scraper
-import engine
+from report_stub import analyze_text_to_report_pack
+from validator import validate_output, ValidationError
 
 st.set_page_config(page_title="BiasLens", page_icon="🛡️", layout="wide")
 
@@ -12,7 +13,6 @@ st.set_page_config(page_title="BiasLens", page_icon="🛡️", layout="wide")
 # ─────────────────────────────────────────────────────────────
 # Auth
 # ─────────────────────────────────────────────────────────────
-
 def check_password() -> bool:
     def password_entered():
         if hmac.compare_digest(st.session_state["password"], st.secrets["APP_PASSWORD"]):
@@ -38,10 +38,9 @@ if not check_password():
 # ─────────────────────────────────────────────────────────────
 # Sidebar
 # ─────────────────────────────────────────────────────────────
-
 with st.sidebar:
     st.title("⚙️ Settings")
-    view_mode_label = st.radio("Report View", ["Overview", "In-Depth"])
+    st.caption("Foundation mode: Streamlit is a thin shell over the new modular core.")
     st.divider()
     if st.button("Clear Session"):
         st.session_state.clear()
@@ -51,7 +50,6 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────
 # Main UI
 # ─────────────────────────────────────────────────────────────
-
 st.title("🛡️ BiasLens: Epistemic / Information Integrity Audit")
 
 tab1, tab2 = st.tabs(["Link to Article", "Paste Text Manually"])
@@ -64,117 +62,92 @@ run = st.button("Run Audit", type="primary")
 
 if run:
     content = ""
+    source_title = "manual_text"
+    source_url = None
 
     if url:
         with st.status("🔍 Scraping...", expanded=False) as s:
             result = scraper.scrape_url(url)
             if result.success:
-                content = result.text
+                content = result.text or ""
+                source_title = "scraped_url"
+                source_url = url
                 s.update(label="Scrape complete", state="complete")
             else:
                 s.update(label="Scrape failed", state="error")
                 st.error(result.text)
+                st.stop()
     elif manual_text.strip():
         content = manual_text.strip()
+        source_title = "manual_text"
+        source_url = None
     else:
         st.warning("Please provide a URL or paste article text.")
         st.stop()
 
-    # PASS A
-    with st.status("🏗️ Pass A: Building Evidence Bank...", expanded=False) as s:
-        raw_a = engine.run_pass_a(content)
-        pass_a = engine._safe_json_loads(raw_a)
-
-        if pass_a.get("_parse_error"):
-            s.update(label="Pass A parse error", state="error")
-            st.error("Pass A returned invalid JSON.")
-            st.code(pass_a.get("_raw", ""), language="json")
+    # NEW CORE: build report pack (stub for now) + validate fail-closed
+    with st.status("🏗️ Building report pack + validating...", expanded=False) as s:
+        report = analyze_text_to_report_pack(
+            text=content,
+            source_title=source_title,
+            source_url=source_url,
+        )
+        try:
+            validate_output(report)
+        except ValidationError as e:
+            s.update(label="Validator failed (fail-closed)", state="error")
+            st.error("Validator failed. Report pack blocked.")
+            st.code(str(e))
             st.stop()
 
-        # Repair offsets to make evidence inspectable
-        repaired_bank, repair_notes = engine.repair_evidence_offsets(content, pass_a.get("evidence_bank", []))
-        pass_a["evidence_bank"] = repaired_bank
-        pass_a.setdefault("repair_notes", []).extend(repair_notes)
+        st.session_state["report"] = report
+        s.update(label="Audit complete", state="complete")
 
-        st.session_state["pass_a"] = pass_a
-        s.update(label="Evidence Bank ready", state="complete")
-
-    # PASS B
-    with st.status("⚖️ Pass B: Performing Constrained Audit...", expanded=False) as s:
-        raw_b = engine.run_pass_b(json.dumps(st.session_state["pass_a"]), view_mode_label)
-        pass_b = engine._safe_json_loads(raw_b)
-
-        if pass_b.get("_parse_error"):
-            s.update(label="Pass B parse error", state="error")
-            st.error("Pass B returned invalid JSON.")
-            st.code(pass_b.get("_raw", ""), language="json")
-            st.stop()
-
-        st.session_state["pass_b_raw"] = pass_b
-        s.update(label="Audit complete (raw)", state="complete")
-
-    # VALIDATE + NORMALIZE
-    validated = engine.validate_and_normalize(st.session_state["pass_a"], st.session_state["pass_b_raw"])
-    profile = engine.build_concern_profile(validated["audit_results"])
-    summary = engine.generate_general_summary(validated["audit_results"])
-
-    st.session_state["validated"] = validated
-    st.session_state["concern_profile"] = profile
-    st.session_state["general_summary"] = summary
 
 # ─────────────────────────────────────────────────────────────
-# Render
+# Render (locked flow)
+# Always show one-paragraph summary first,
+# then offer Reader In-depth / Scholar In-depth
 # ─────────────────────────────────────────────────────────────
-
-validated = st.session_state.get("validated")
-if validated:
-    st.divider()
-    st.subheader("📌 Information Integrity Profile (Nutrition Label)")
-
-    # Profile display
-    for cat, lvl in st.session_state.get("concern_profile", {}).items():
-        st.write(f"**{cat}** — {lvl}")
-
-    st.divider()
-    st.subheader("🧾 General Summary (Evidence-Cited, Mechanical)")
-    st.info(st.session_state.get("general_summary", ""))
-
+report = st.session_state.get("report")
+if report:
     st.divider()
 
-    if view_mode_label == "Overview":
-        st.subheader("📝 Overview Findings (Elevated/High only)")
-        for res in validated.get("audit_results", []):
-            if res["concern_level"] in ("Elevated", "High"):
-                st.warning(f"**{res['concern_level']} — {res['category']}**\n\n{res['finding']}\n\nEvidence: {res['evidence_eids']}")
-    else:
-        st.subheader("🕵️ In-Depth Audit (Expert)")
+    rp = report.get("report_pack", {}) or {}
+    summary = rp.get("summary_one_paragraph", "")
+    reader = rp.get("reader_interpretation_guide", "")
+    findings_items = (rp.get("findings_pack", {}) or {}).get("items", []) or []
+    scholar_items = (rp.get("scholar_pack", {}) or {}).get("items", []) or []
 
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.write("**Argument Map**")
-            st.json(validated.get("argument_map", {}))
-        with col2:
-            st.write("**Validation Notes**")
-            notes = validated.get("validation_notes", [])
-            if notes:
-                st.warning("\n".join([f"- {n}" for n in notes]))
-            else:
-                st.success("No validation removals.")
+    # 1) Always show one-paragraph summary first
+    st.subheader("🧾 One-Paragraph Summary")
+    st.info(summary or "(missing)")
+
+    # Options: Reader / Scholar
+    rtab, stab = st.tabs(["Reader In-depth", "Scholar In-depth"])
+
+    with rtab:
+        st.subheader("📣 Reader Interpretation / Public Guide")
+        st.write(reader or "(missing)")
 
         st.divider()
-        st.write("**All Retained Findings (Evidence-Cited)**")
+        st.subheader("Findings (evidence-cited)")
+        if findings_items:
+            for it in findings_items:
+                title = f"{it.get('severity','')} — {it.get('finding_id','')}"
+                with st.expander(title, expanded=False):
+                    st.write(f"**Restated claim:** {it.get('restated_claim','')}")
+                    st.write(f"**Finding:** {it.get('finding_text','')}")
+                    st.caption(f"Evidence: {it.get('evidence_eids', [])}")
+        else:
+            st.caption("No findings in this stub run.")
 
-        for res in validated.get("audit_results", []):
-            with st.expander(f"{res['concern_level']} — {res['category']}", expanded=False):
-                st.write(res["finding"])
-                st.caption(f"Evidence: {res['evidence_eids']}")
-                if res.get("logic_audit"):
-                    st.write("**Logic Audit**")
-                    st.json(res["logic_audit"])
+    with stab:
+        st.subheader("🎓 Scholar In-depth")
+        if scholar_items:
+            st.json(scholar_items)
+        else:
+            st.caption("No scholar items in this stub run (expected in foundation mode).")
 
-    # Debug tools
-    with st.expander("🛠️ Debug: Pass A (Evidence Bank)"):
-        st.json(st.session_state.get("pass_a", {}))
-
-    with st.expander("🛠️ Debug: Pass B (Raw)"):
-        st.json(st.session_state.get("pass_b_raw", {}))
+    with st.expander("🛠️ Debug: Full Report JSON"):
+        st.code(json.dumps(report, indent=2, ensure_ascii=False), language="json")
