@@ -18,11 +18,14 @@ from dataclasses import dataclass
 from typing import Optional
 
 from validator import validate_report_pack
+from schema_names import K
+
 
 
 def _validate(report: dict) -> None:
-    eids = [e.get("eid") for e in report.get("evidence_bank", []) if e.get("eid")]
+    eids = [e.get(K.EID) for e in report.get(K.EVIDENCE_BANK, []) if e.get(K.EID)]
     validate_report_pack(report, eids)
+
 
 
 # -----------------------------
