@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Set, Optional
 
+from schema_names import K
+
 
 class ValidationError(Exception):
     pass
@@ -54,18 +56,19 @@ def validate_report_pack(output: dict, evidence_ids: List[str] | Set[str]) -> Li
 # Evidence helpers
 # -----------------------------
 def collect_evidence_ids(out: Dict[str, Any]) -> Set[str]:
-    bank = out.get("evidence_bank", []) or []
+    bank = out.get(K.EVIDENCE_BANK, []) or []
     ids: Set[str] = set()
+
     for item in bank:
-        eid = (item.get("eid") or "").strip()
+        eid = (item.get(K.EID) or "").strip()
         if eid:
             ids.add(eid)
-    return ids
 
+    return ids
 
 def validate_evidence_bank(out: Dict[str, Any]) -> List[str]:
     errs: List[str] = []
-    bank = out.get("evidence_bank", []) or []
+    bank = out.get(K.EVIDENCE_BANK, []) or []
 
     if not isinstance(bank, list):
         return ["evidence_bank must be a list"]
@@ -75,11 +78,11 @@ def validate_evidence_bank(out: Dict[str, Any]) -> List[str]:
             errs.append(f"evidence_bank[{i}] must be an object")
             continue
 
-        eid = (item.get("eid") or "").strip()
+        eid = (item.get(K.EID) or "").strip()
         if not eid:
             errs.append(f"evidence_bank[{i}] missing eid")
 
-        quote = (item.get("quote") or "").strip()
+        quote = (item.get(K.QUOTE) or "").strip()
         if not quote:
             errs.append(f"evidence_bank[{i}] missing quote (verbatim)")
 
