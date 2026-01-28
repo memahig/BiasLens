@@ -3,51 +3,311 @@
 """
 renderer.py
 
-Converts a Brick-7 BiasLens report pack into readable Markdown reports.
+Renders BiasLens output into readable Markdown.
 
-Outputs:
-- Overview: short, readable, evidence-anchored
-- Reader In-Depth: Facebook-friendly interpretation layer (structure-based, not intent-based)
-- Scholar In-Depth: technical, evidence IDs, claims, and evaluations
+Supports TWO schemas:
+A) Legacy/stub schema (your current deployed JSON):
+   - run_metadata, facts_layer, claim_registry, evidence_bank, metrics, report_pack, etc.
 
-This file does NOT call the LLM; it only renders what the engine already produced.
+B) Brick-7 pack schema (future/alternate):
+   - article_layer, claim_registry (list), claim_evaluations, headline_body_delta (dict), reader_interpretation, etc.
+
+Goal: Make the site feel real NOW (Reader voice + substantive Overview),
+without forcing a schema migration first.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import json
+from typing import Any, Dict, List, Optional, Tuple
 
+
+# ─────────────────────────────────────────────────────────────
+# small helpers
+# ─────────────────────────────────────────────────────────────
 
 def _d(x: Any) -> Dict[str, Any]:
     return x if isinstance(x, dict) else {}
 
-
 def _l(x: Any) -> List[Any]:
     return x if isinstance(x, list) else []
-
 
 def _s(x: Any) -> str:
     return str(x).strip() if x is not None else ""
 
+def _clip(s: str, n: int = 260) -> str:
+    s = (s or "").strip()
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 def _bullet(lines: List[str], text: str) -> None:
     lines.append(f"- {text}")
 
+def _is_stub_schema(pack: Dict[str, Any]) -> bool:
+    # Your pasted pack has these keys
+    return "report_pack" in pack and "run_metadata" in pack and "facts_layer" in pack
 
-def render_overview(pack: Dict[str, Any]) -> str:
-    pack = _d(pack)
-    article = _d(pack.get("article_layer"))
-    onep = _s(article.get("one_paragraph_summary")) or "(No summary produced.)"
+def _title_url_from_stub(pack: Dict[str, Any]) -> Tuple[str, str]:
+    # evidence_bank[0].source.title/url exists in your pack
+    ev = _l(pack.get("evidence_bank"))
+    if ev:
+        src = _d(_d(ev[0]).get("source"))
+        return _s(src.get("title")) or "scraped_url", _s(src.get("url"))
+    return "BiasLens Report", ""
 
-    title = _s(pack.get("source_title")) or "BiasLens Report"
-    url = _s(pack.get("source_url"))
+def _title_url_from_brick7(pack: Dict[str, Any]) -> Tuple[str, str]:
+    return _s(pack.get("source_title")) or "BiasLens Report", _s(pack.get("source_url"))
 
-    claim_registry = _l(pack.get("claim_registry"))
-    evidence_bank = _l(pack.get("evidence_bank"))
+def _severity_rank(sev: str) -> int:
+    # supports your stub "🟢" style; also handles words
+    sev = _s(sev)
+    if "🔴" in sev or sev.lower() == "high":
+        return 4
+    if "🟠" in sev or sev.lower() == "elevated":
+        return 3
+    if "🟡" in sev or sev.lower() == "moderate":
+        return 2
+    return 1
+
+def _evidence_lookup(pack: Dict[str, Any]) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    for ev in _l(pack.get("evidence_bank")):
+        evd = _d(ev)
+        eid = _s(evd.get("eid"))
+        quote = _s(evd.get("quote"))
+        if eid and quote:
+            lookup[eid] = quote
+    return lookup
+
+
+# ─────────────────────────────────────────────────────────────
+# LEGACY/STUB schema rendering
+# ─────────────────────────────────────────────────────────────
+
+def _stub_overview(pack: Dict[str, Any]) -> str:
+    title, url = _title_url_from_stub(pack)
+    report_pack = _d(pack.get("report_pack"))
+    onep = _s(report_pack.get("summary_one_paragraph")) or "(No summary.)"
+
+    metrics = _d(pack.get("metrics"))
+    density = _d(metrics.get("evidence_density"))
+    ratio = density.get("evidence_to_claim_ratio", None)
+    density_label = _s(density.get("density_label"))
+    num_claims = density.get("num_claims", None)
+    num_evidence = density.get("num_evidence_items", None)
+
+    findings_pack = _d(report_pack.get("findings_pack"))
+    items = _l(findings_pack.get("items"))
+
+    evidence = _evidence_lookup(pack)
+
+    # Take top findings (if any)
+    top = items[:]
+    top.sort(key=lambda x: _severity_rank(_d(x).get("severity")), reverse=True)
+    top = top[:5]
+
+    limits = _l(pack.get("declared_limits"))
+
+    lines: List[str] = []
+    lines.append(f"# 🛡️ BiasLens Overview — {title}")
+    if url:
+        lines.append(f"*Source:* {url}")
+    lines.append("")
+    lines.append("## One-paragraph summary")
+    lines.append(onep)
+    lines.append("")
+    lines.append("## Top findings (evidence-cited)")
+    if top:
+        for it in top:
+            itd = _d(it)
+            sev = _s(itd.get("severity")) or "🟢"
+            claim_id = _s(itd.get("claim_id"))
+            txt = _s(itd.get("finding_text"))
+            eids = _l(itd.get("evidence_eids"))
+            eid_str = ", ".join([_s(e) for e in eids if _s(e)])
+            quote = ""
+            if eids:
+                q = evidence.get(_s(eids[0]), "")
+                if q:
+                    quote = _clip(q, 180)
+            lines.append(f"- {sev} **{claim_id or 'Claim'}** — {txt}")
+            if eid_str:
+                lines.append(f"  - evidence: `{eid_str}`")
+            if quote:
+                lines.append(f"  - quote: “{quote}”")
+    else:
+        _bullet(lines, "No findings were emitted in this run.")
+
+    lines.append("")
+    lines.append("## Evidence discipline snapshot")
+    if num_claims is not None and num_evidence is not None:
+        _bullet(lines, f"Claims extracted: **{num_claims}**")
+        _bullet(lines, f"Evidence quotes extracted: **{num_evidence}**")
+    if ratio is not None:
+        _bullet(lines, f"Evidence-to-claim ratio: **{ratio}** ({density_label or 'n/a'})")
+    lines.append("")
+    lines.append("## Declared limits / epistemic humility")
+    if limits:
+        for lim in limits[:5]:
+            ld = _d(lim)
+            _bullet(lines, _s(ld.get("statement")) or "(limit statement)")
+    else:
+        _bullet(lines, "No limits declared.")
+
+    return "\n".join(lines)
+
+
+def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
+    """
+    Canonical-ish “Public Guide” voice for the current stub schema,
+    without inventing facts.
+    """
+    title, url = _title_url_from_stub(pack)
+    report_pack = _d(pack.get("report_pack"))
+    onep = _s(report_pack.get("summary_one_paragraph")) or "(No summary.)"
+
+    metrics = _d(pack.get("metrics"))
+    density = _d(metrics.get("evidence_density"))
+    density_label = _s(density.get("density_label"))
+    ratio = density.get("evidence_to_claim_ratio", None)
+
+    counter = _d(metrics.get("counterevidence_status"))
+    counter_required = bool(counter.get("required", False))
+    counter_status = _s(counter.get("status"))
+    counter_scope = _s(counter.get("search_scope"))
+    counter_result = _s(counter.get("result"))
 
     hbd = _d(pack.get("headline_body_delta"))
-    h_head = _s(hbd.get("headline"))
-    h_qual = _s(hbd.get("body_key_qualifiers"))
+    hbd_present = bool(hbd.get("present", False))
+    hbd_items = _l(hbd.get("items"))
+
+    claims = _d(pack.get("claim_registry")).get("claims", [])
+    claims = _l(claims)
+    hi_stakes = [c for c in claims if _s(_d(c).get("stakes")).lower() == "high"]
+
+    guide = _s(report_pack.get("reader_interpretation_guide"))
+
+    lines: List[str] = []
+    lines.append(f"# 🧭 Reader In-Depth — {title}")
+    if url:
+        lines.append(f"*Source:* {url}")
+    lines.append("")
+    lines.append("## One-paragraph summary")
+    lines.append(onep)
+    lines.append("")
+    lines.append("## What kind of piece is this (as a reader experience)?")
+
+    # simple classification heuristics (structure-based only)
+    if density_label in ("low",) or (ratio is not None and ratio < 0.8):
+        _bullet(lines, "This reads like **assertion-forward reporting**: claims are presented, but the visible evidence footprint is relatively thin.")
+    else:
+        _bullet(lines, "This reads like **quote-driven political reporting**: multiple claims are anchored to quoted passages, but deeper verification may still be limited.")
+
+    if hi_stakes:
+        _bullet(lines, f"It contains **{len(hi_stakes)} high-stakes claim(s)** (higher consequences if wrong), which merit stronger sourcing and counterevidence checks.")
+    else:
+        _bullet(lines, "Most extracted claims are **low-stakes** (but can still shape interpretation through framing).")
+
+    if hbd_present or hbd_items:
+        _bullet(lines, "A **Headline–Body Delta** signal is present (headline framing may outpace body qualifiers).")
+    else:
+        _bullet(lines, "Headline–Body Delta was **not flagged** in this run (or not computed).")
+
+    lines.append("")
+    lines.append("## How it can work on readers (structure-based mechanisms)")
+    # Mechanism set that matches your terminology direction
+    _bullet(lines, "**Attribution-as-authority:** quotes from actors can feel like evidence, but quotes are not verification.")
+    _bullet(lines, "**Reaction reporting risk:** reporting others’ statements can transmit the emotional payload even when the article stays neutral.")
+    _bullet(lines, "**Scope inflation watch:** local tactical claims can quietly become broad conclusions if not fenced with qualifiers.")
+    _bullet(lines, "**Omission-dependent reasoning watch:** if key comparative context is missing, conclusions may lean on what isn’t said.")
+
+    lines.append("")
+    lines.append("## What BiasLens can and cannot conclude from this run")
+    if guide:
+        lines.append(_clip(guide, 600))
+    else:
+        lines.append(
+            "This run is integrity-safe: it shows extracted evidence and claims without making strong factual judgments beyond the evidence provided. "
+            "Where verification isn’t performed, the correct status is **unknown**, not speculation."
+        )
+
+    lines.append("")
+    lines.append("## Counterevidence status")
+    _bullet(lines, f"Required: **{counter_required}**")
+    _bullet(lines, f"Status: **{counter_status or 'n/a'}**")
+    if counter_scope:
+        _bullet(lines, f"Search scope: {counter_scope}")
+    if counter_result:
+        _bullet(lines, f"Result: {counter_result}")
+
+    lines.append("")
+    lines.append("## Reader checklist (quick)")
+    _bullet(lines, "Ask: *What would change my mind?* (What counterevidence would matter?)")
+    _bullet(lines, "Separate **who said it** from **whether it’s true**.")
+    _bullet(lines, "Look for missing comparison cases or missing numbers (absence of expected context).")
+    _bullet(lines, "Notice if the headline makes you feel something the body does not fully warrant.")
+
+    return "\n".join(lines)
+
+
+def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
+    title, url = _title_url_from_stub(pack)
+    evidence = _evidence_lookup(pack)
+
+    claims = _d(pack.get("claim_registry")).get("claims", [])
+    claims = _l(claims)
+
+    report_pack = _d(pack.get("report_pack"))
+    findings_pack = _d(report_pack.get("findings_pack"))
+    fitems = _l(findings_pack.get("items"))
+
+    lines: List[str] = []
+    lines.append(f"# 🧪 Scholar In-Depth — {title}")
+    if url:
+        lines.append(f"*Source:* {url}")
+    lines.append("")
+
+    lines.append("## Evidence bank (verbatim excerpts)")
+    for eid, quote in list(evidence.items())[:25]:
+        lines.append(f"- **{eid}**: {quote}")
+
+    lines.append("")
+    lines.append("## Claim registry (extracted)")
+    for c in claims[:25]:
+        cd = _d(c)
+        lines.append(f"- **{_s(cd.get('claim_id'))}** (stakes: {_s(cd.get('stakes'))}): {_clip(_s(cd.get('claim_text')), 320)}")
+        lines.append(f"  - evidence_eids: {cd.get('evidence_eids', [])}")
+
+    lines.append("")
+    lines.append("## Findings pack (current run)")
+    if fitems:
+        for it in fitems[:25]:
+            itd = _d(it)
+            claim_id = _s(itd.get("claim_id"))
+            rest = _clip(_s(itd.get("restated_claim")), 240)
+            txt = _s(itd.get("finding_text"))
+            sev = _s(itd.get("severity")) or "🟢"
+            eids = itd.get("evidence_eids", [])
+            lines.append(f"- {sev} **{claim_id}**: {rest}")
+            lines.append(f"  - finding: {txt}")
+            lines.append(f"  - evidence_eids: {eids}")
+    else:
+        lines.append("- (No scholar findings yet in this schema/run.)")
+
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────
+# BRICK-7 schema rendering (kept for forward compatibility)
+# ─────────────────────────────────────────────────────────────
+
+def _brick7_overview(pack: Dict[str, Any]) -> str:
+    title, url = _title_url_from_brick7(pack)
+    article = _d(pack.get("article_layer"))
+    onep = _s(article.get("one_paragraph_summary")) or "(No summary.)"
+
+    evidence_bank = _l(pack.get("evidence_bank"))
+    claim_registry = _l(pack.get("claim_registry"))
+    hbd = _d(pack.get("headline_body_delta"))
 
     lines: List[str] = []
     lines.append(f"# 🛡️ BiasLens Overview — {title}")
@@ -61,138 +321,61 @@ def render_overview(pack: Dict[str, Any]) -> str:
     _bullet(lines, f"Evidence quotes extracted: **{len(evidence_bank)}**")
     _bullet(lines, f"Claims extracted: **{len(claim_registry)}**")
     lines.append("")
-    lines.append("## Headline–Body Delta (presentation integrity)")
-    _bullet(lines, f"Headline: **{h_head or '(not provided)'}**")
-    _bullet(lines, f"Body qualifiers: {h_qual or '(explicitly unknown / not extracted yet)'}")
-    lines.append("")
-    lines.append("## Notes on interpretation")
-    lines.append(
-        "BiasLens flags **structure-based information integrity risks** (evidence discipline, logic, omission-as-absence-of-context). "
-        "It does **not** infer intent."
-    )
+    lines.append("## Headline–Body Delta")
+    _bullet(lines, f"Headline: **{_s(hbd.get('headline')) or '(not provided)'}**")
+    _bullet(lines, f"Body qualifiers: {_s(hbd.get('body_key_qualifiers')) or '(unknown)'}")
     return "\n".join(lines)
 
 
-def render_reader_in_depth(pack: Dict[str, Any]) -> str:
-    pack = _d(pack)
+def _brick7_reader(pack: Dict[str, Any]) -> str:
+    title, url = _title_url_from_brick7(pack)
     article = _d(pack.get("article_layer"))
-    onep = _s(article.get("one_paragraph_summary")) or "(No summary produced.)"
-
-    title = _s(pack.get("source_title")) or "BiasLens Report"
-
+    onep = _s(article.get("one_paragraph_summary")) or "(No summary.)"
     reader = _d(pack.get("reader_interpretation"))
     mechs = _l(reader.get("named_mechanisms"))
 
-    hbd = _d(pack.get("headline_body_delta"))
-    h_head = _s(hbd.get("headline"))
-    h_findings = _l(hbd.get("findings"))
-
     lines: List[str] = []
     lines.append(f"# 🧭 Reader In-Depth — {title}")
+    if url:
+        lines.append(f"*Source:* {url}")
     lines.append("")
     lines.append("## One-paragraph summary")
     lines.append(onep)
     lines.append("")
-    lines.append("## How this article may shape reader interpretation (structure, not intent)")
+    lines.append("## Mechanisms (structure-based)")
     if mechs:
-        for m in mechs[:10]:
+        for m in mechs[:12]:
             md = _d(m)
-            name = _s(md.get("mechanism_name")) or "Mechanism"
-            expl = _s(md.get("plain_language_explanation")) or ""
-            _bullet(lines, f"**{name}** — {expl}")
+            _bullet(lines, f"**{_s(md.get('mechanism_name'))}** — {_s(md.get('plain_language_explanation'))}")
     else:
-        _bullet(lines, "No mechanisms were listed in this build (placeholder).")
-
-    lines.append("")
-    lines.append("## Headline–Body Delta (reaction reporting risk)")
-    _bullet(lines, f"Headline: **{h_head or '(not provided)'}**")
-    if h_findings:
-        for f in h_findings[:5]:
-            fd = _d(f)
-            _bullet(lines, _s(fd.get("finding_text")) or "(no headline/body finding text)")
-    else:
-        _bullet(lines, "No headline/body delta findings listed (placeholder).")
-
-    lines.append("")
-    lines.append("## What to look for as a reader")
-    _bullet(lines, "Are key claims backed by **verbatim quoted evidence** or vague attribution?")
-    _bullet(lines, "Do conclusions rely on **missing comparative context** (omission-dependent reasoning)?")
-    _bullet(lines, "Does the headline amplify emotion beyond the article’s qualifiers?")
-    _bullet(lines, "Are there **scope jumps** (local → universal) without support?")
-    lines.append("")
-    lines.append(
-        "**Reminder:** Absence is reported only as *absence of expected context* — BiasLens does not claim motive or wrongdoing."
-    )
+        _bullet(lines, "(No mechanisms listed.)")
     return "\n".join(lines)
 
 
-def render_scholar_in_depth(pack: Dict[str, Any]) -> str:
-    pack = _d(pack)
-
-    title = _s(pack.get("source_title")) or "BiasLens Report"
-    url = _s(pack.get("source_url"))
-
-    evidence_bank = _l(pack.get("evidence_bank"))
-    claim_registry = _l(pack.get("claim_registry"))
-    claim_evals = _l(pack.get("claim_evaluations"))
-
-    arg_layer = _d(pack.get("argument_layer"))
-    arg_summary = _s(arg_layer.get("summary"))
-    arg_map = arg_layer.get("argument_map")
-
+def _brick7_scholar(pack: Dict[str, Any]) -> str:
+    title, url = _title_url_from_brick7(pack)
     lines: List[str] = []
     lines.append(f"# 🧪 Scholar In-Depth — {title}")
     if url:
         lines.append(f"*Source:* {url}")
     lines.append("")
-
-    lines.append("## Evidence Bank (verbatim)")
-    for ev in evidence_bank[:25]:
-        evd = _d(ev)
-        eid = _s(evd.get("eid"))
-        quote = _s(evd.get("quote"))
-        if eid and quote:
-            lines.append(f"- **{eid}**: {quote}")
-    if len(evidence_bank) > 25:
-        lines.append(f"\n*(Showing first 25 of {len(evidence_bank)} evidence items.)*")
-
-    lines.append("")
-    lines.append("## Claim Registry (discrete claims; each evaluation restates the claim)")
-    for c in claim_registry[:25]:
-        cd = _d(c)
-        cid = _s(cd.get("claim_id"))
-        ctext = _s(cd.get("claim_text"))
-        state = _s(cd.get("epistemic_state") or cd.get("status") or cd.get("verification_status"))
-        eids = cd.get("evidence_eids", [])
-        lines.append(f"- **{cid}** ({state or 'unknown'}): {ctext}")
-        lines.append(f"  - evidence_eids: {eids}")
-
-    lines.append("")
-    lines.append("## Claim Evaluations (evidence-anchored; fail-closed)")
-    for ce in claim_evals[:25]:
-        ced = _d(ce)
-        cid = _s(ced.get("claim_id"))
-        rest = _s(ced.get("claim_restatement"))
-        lines.append(f"- **{cid}**: {rest}")
-        findings = _l(ced.get("findings"))
-        for f in findings[:8]:
-            fd = _d(f)
-            ftxt = _s(fd.get("finding_text"))
-            ftype = _s(fd.get("finding_type"))
-            feids = fd.get("evidence_eids", [])
-            quotes = _l(fd.get("verbatim_quotes"))
-            lines.append(f"  - [{ftype or 'finding'}] {ftxt}")
-            lines.append(f"    - evidence_eids: {feids}")
-            if quotes:
-                lines.append(f"    - quote: {_s(quotes[0])}")
-
-    lines.append("")
-    lines.append("## Argument Layer")
-    lines.append(arg_summary or "(no argument summary)")
-    lines.append("")
-    lines.append("### Argument map (raw)")
     lines.append("```json")
-    lines.append(__import__("json").dumps(arg_map, indent=2, ensure_ascii=False))
+    lines.append(json.dumps(pack, indent=2, ensure_ascii=False))
     lines.append("```")
-
     return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────
+# Public API used by streamlit_app.py
+# ─────────────────────────────────────────────────────────────
+
+def render_overview(pack: Dict[str, Any]) -> str:
+    return _stub_overview(pack) if _is_stub_schema(pack) else _brick7_overview(pack)
+
+
+def render_reader_in_depth(pack: Dict[str, Any]) -> str:
+    return _stub_reader_in_depth(pack) if _is_stub_schema(pack) else _brick7_reader(pack)
+
+
+def render_scholar_in_depth(pack: Dict[str, Any]) -> str:
+    return _stub_scholar_in_depth(pack) if _is_stub_schema(pack) else _brick7_scholar(pack)
