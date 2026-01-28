@@ -5,6 +5,7 @@ from typing import Optional
 
 from schema_names import K
 from evidence_bank_builder import build_evidence_bank
+from claim_registry_builder import build_claim_registry_from_evidence
 
 
 def dummy_report_pack() -> dict:
@@ -74,7 +75,7 @@ def dummy_report_pack() -> dict:
                         K.FINDING_ID: "FP1",
                         K.CLAIM_ID: "C1",
                         K.RESTATED_CLAIM: "The article makes at least one declarative statement.",
-                        K.FINDING_TEXT: "The article contains at least one declarative sentence.",
+                        K.FINDING_TEXT: "Stub finding: claims were extracted only from verbatim evidence quotes; deeper analysis not yet wired.",
                         K.SEVERITY: "🟢",
                         K.EVIDENCE_EIDS: ["E1"],
                     }
@@ -93,7 +94,7 @@ def analyze_text_to_report_pack(text: str, source_title: str, source_url: Option
         K.SOURCE_TYPE: "url" if source_url else "text",
     }
 
-    # REAL Pass A: build evidence bank from verbatim text + offsets
+    # REAL Pass A: evidence bank from verbatim text + offsets
     bank = build_evidence_bank(
         text=text,
         source_title=source_title,
@@ -102,20 +103,26 @@ def analyze_text_to_report_pack(text: str, source_title: str, source_url: Option
     )
     report[K.EVIDENCE_BANK] = bank
 
-    # Link stub facts/claims/findings to first evidence item
+    # REAL Pass A (part 2): Claim Registry strictly from evidence quotes
+    claims = build_claim_registry_from_evidence(bank, max_claims=8)
+    report[K.CLAIM_REGISTRY][K.CLAIMS] = claims
+
+    # Link facts to first evidence item (still stubbed facts)
     first_eid = bank[0][K.EID]
     report[K.FACTS_LAYER][K.FACTS][0][K.FACT_TEXT] = "An input text was provided for analysis."
     report[K.FACTS_LAYER][K.FACTS][0][K.NOTES] = "Stub mode: no fact-checking performed."
     report[K.FACTS_LAYER][K.FACTS][0][K.EVIDENCE_EIDS] = [first_eid]
 
-    report[K.CLAIM_REGISTRY][K.CLAIMS][0][K.CLAIM_TEXT] = "The input contains text to analyze."
-    report[K.CLAIM_REGISTRY][K.CLAIMS][0][K.EVIDENCE_EIDS] = [first_eid]
+    # Bind findings pack to the first extracted claim (UX lock)
+    first_claim = claims[0]
+    report[K.REPORT_PACK][K.FINDINGS_PACK][K.ITEMS][0][K.CLAIM_ID] = first_claim[K.CLAIM_ID]
+    report[K.REPORT_PACK][K.FINDINGS_PACK][K.ITEMS][0][K.RESTATED_CLAIM] = first_claim[K.CLAIM_TEXT]
+    report[K.REPORT_PACK][K.FINDINGS_PACK][K.ITEMS][0][K.EVIDENCE_EIDS] = list(first_claim[K.EVIDENCE_EIDS])
 
-    report[K.REPORT_PACK][K.FINDINGS_PACK][K.ITEMS][0][K.EVIDENCE_EIDS] = [first_eid]
-
-    # Update evidence density to match the new bank size
+    # Evidence density metrics (correct + consistent)
     report[K.METRICS][K.EVIDENCE_DENSITY][K.NUM_EVIDENCE_ITEMS] = len(bank)
-    report[K.METRICS][K.EVIDENCE_DENSITY][K.EVIDENCE_TO_CLAIM_RATIO] = float(len(bank))
+    report[K.METRICS][K.EVIDENCE_DENSITY][K.NUM_CLAIMS] = len(claims)
+    report[K.METRICS][K.EVIDENCE_DENSITY][K.EVIDENCE_TO_CLAIM_RATIO] = len(bank) / max(1, len(claims))
 
     report[K.REPORT_PACK][K.SUMMARY_ONE_PARAGRAPH] = (
         "BiasLens ran in stub mode: the input text was ingested, but full Pass A/Pass B extraction "
