@@ -9,10 +9,14 @@ from validator import validate_output, ValidationError
 
 from renderer import render_overview, render_reader_in_depth, render_scholar_in_depth
 
+BUILD_ID = "BUILD_2026-01-27_22-00"
 
 st.set_page_config(page_title="BiasLens", page_icon="🛡️", layout="wide")
 
 st.title("🛡️ BiasLens — Epistemic / Information Integrity")
+
+st.caption(f"Build: {BUILD_ID}")
+
 st.caption("Evidence-indexed, claim-by-claim analysis. Omission is reported only as absence of expected context (never intent).")
 
 
