@@ -1,8 +1,10 @@
+
 from __future__ import annotations
 
 from typing import Optional
 
 from schema_names import K
+from evidence_bank_builder import build_evidence_bank
 
 
 def dummy_report_pack() -> dict:
@@ -86,26 +88,34 @@ def dummy_report_pack() -> dict:
 def analyze_text_to_report_pack(text: str, source_title: str, source_url: Optional[str]) -> dict:
     report = dummy_report_pack()
 
-    snippet = (text or "").strip()
-    if len(snippet) > 240:
-        snippet = snippet[:240] + "…"
-
     report[K.RUN_METADATA] = {
         K.MODE: "stub",
         K.SOURCE_TYPE: "url" if source_url else "text",
     }
 
-    quote = snippet if snippet else "No text provided."
-    report[K.EVIDENCE_BANK][0][K.QUOTE] = quote
-    report[K.EVIDENCE_BANK][0][K.START_CHAR] = 0
-    report[K.EVIDENCE_BANK][0][K.END_CHAR] = len(quote)
-    report[K.EVIDENCE_BANK][0][K.SOURCE][K.TYPE] = "url" if source_url else "text"
-    report[K.EVIDENCE_BANK][0][K.SOURCE][K.TITLE] = source_title
-    report[K.EVIDENCE_BANK][0][K.SOURCE][K.URL] = source_url
+    # REAL Pass A: build evidence bank from verbatim text + offsets
+    bank = build_evidence_bank(
+        text=text,
+        source_title=source_title,
+        source_url=source_url,
+        max_items=6,
+    )
+    report[K.EVIDENCE_BANK] = bank
 
+    # Link stub facts/claims/findings to first evidence item
+    first_eid = bank[0][K.EID]
     report[K.FACTS_LAYER][K.FACTS][0][K.FACT_TEXT] = "An input text was provided for analysis."
     report[K.FACTS_LAYER][K.FACTS][0][K.NOTES] = "Stub mode: no fact-checking performed."
+    report[K.FACTS_LAYER][K.FACTS][0][K.EVIDENCE_EIDS] = [first_eid]
+
     report[K.CLAIM_REGISTRY][K.CLAIMS][0][K.CLAIM_TEXT] = "The input contains text to analyze."
+    report[K.CLAIM_REGISTRY][K.CLAIMS][0][K.EVIDENCE_EIDS] = [first_eid]
+
+    report[K.REPORT_PACK][K.FINDINGS_PACK][K.ITEMS][0][K.EVIDENCE_EIDS] = [first_eid]
+
+    # Update evidence density to match the new bank size
+    report[K.METRICS][K.EVIDENCE_DENSITY][K.NUM_EVIDENCE_ITEMS] = len(bank)
+    report[K.METRICS][K.EVIDENCE_DENSITY][K.EVIDENCE_TO_CLAIM_RATIO] = float(len(bank))
 
     report[K.REPORT_PACK][K.SUMMARY_ONE_PARAGRAPH] = (
         "BiasLens ran in stub mode: the input text was ingested, but full Pass A/Pass B extraction "
