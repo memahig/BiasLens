@@ -1,153 +1,91 @@
 
-import hmac
+#!/usr/bin/env python3
 import json
 import streamlit as st
 
-import scraper
+from io_sources import resolve_input_text
 from report_stub import analyze_text_to_report_pack
 from validator import validate_output, ValidationError
 
+from renderer import render_overview, render_reader_in_depth, render_scholar_in_depth
+
+
 st.set_page_config(page_title="BiasLens", page_icon="🛡️", layout="wide")
 
-
-# ─────────────────────────────────────────────────────────────
-# Auth
-# ─────────────────────────────────────────────────────────────
-def check_password() -> bool:
-    def password_entered():
-        if hmac.compare_digest(st.session_state["password"], st.secrets["APP_PASSWORD"]):
-            st.session_state["authenticated"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["authenticated"] = False
-
-    if st.session_state.get("authenticated", False):
-        return True
-
-    st.title("🛡️ BiasLens Login")
-    st.text_input("Passkey", type="password", on_change=password_entered, key="password")
-    if "authenticated" in st.session_state and not st.session_state["authenticated"]:
-        st.error("Incorrect passkey.")
-    return False
+st.title("🛡️ BiasLens — Epistemic / Information Integrity")
+st.caption("Evidence-indexed, claim-by-claim analysis. Omission is reported only as absence of expected context (never intent).")
 
 
-if not check_password():
-    st.stop()
-
-
-# ─────────────────────────────────────────────────────────────
-# Sidebar
-# ─────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚙️ Settings")
-    st.caption("Foundation mode: Streamlit is a thin shell over the new modular core.")
-    st.divider()
-    if st.button("Clear Session"):
-        st.session_state.clear()
-        st.rerun()
+    st.header("Input")
+    mode = st.radio("Report mode", ["Overview", "Reader In-Depth", "Scholar In-Depth"], index=0)
+    show_json = st.checkbox("Show raw JSON pack", value=False)
 
 
-# ─────────────────────────────────────────────────────────────
-# Main UI
-# ─────────────────────────────────────────────────────────────
-st.title("🛡️ BiasLens: Epistemic / Information Integrity Audit")
+tab_url, tab_text = st.tabs(["Analyze URL", "Paste Text"])
 
-tab1, tab2 = st.tabs(["Link to Article", "Paste Text Manually"])
-with tab1:
-    url = st.text_input("Article URL", placeholder="https://...")
-with tab2:
-    manual_text = st.text_area("Paste article text here", height=350)
 
-run = st.button("Run Audit", type="primary")
+url = None
+raw_text = None
 
-if run:
-    content = ""
-    source_title = "manual_text"
-    source_url = None
+with tab_url:
+    url = st.text_input("Article URL", value="", placeholder="https://...")
+    go_url = st.button("Analyze URL", use_container_width=True)
 
-    if url:
-        with st.status("🔍 Scraping...", expanded=False) as s:
-            result = scraper.scrape_url(url)
-            if result.success:
-                content = result.text or ""
-                source_title = "scraped_url"
-                source_url = url
-                s.update(label="Scrape complete", state="complete")
-            else:
-                s.update(label="Scrape failed", state="error")
-                st.error(result.text)
-                st.stop()
-    elif manual_text.strip():
-        content = manual_text.strip()
-        source_title = "manual_text"
-        source_url = None
-    else:
-        st.warning("Please provide a URL or paste article text.")
-        st.stop()
+with tab_text:
+    raw_text = st.text_area("Paste article text", height=250, placeholder="Paste full article text here...")
+    go_text = st.button("Analyze pasted text", use_container_width=True)
 
-    # NEW CORE: build report pack (stub for now) + validate fail-closed
-    with st.status("🏗️ Building report pack + validating...", expanded=False) as s:
-        report = analyze_text_to_report_pack(
-            text=content,
+
+def _render(pack: dict) -> None:
+    # Render three tabs regardless of sidebar selection (better UX)
+    t1, t2, t3 = st.tabs(["Overview", "Reader In-Depth", "Scholar In-Depth"])
+
+    with t1:
+        st.markdown(render_overview(pack))
+
+    with t2:
+        st.markdown(render_reader_in_depth(pack))
+
+    with t3:
+        st.markdown(render_scholar_in_depth(pack))
+
+    if show_json:
+        st.divider()
+        st.subheader("Raw report pack JSON")
+        st.code(json.dumps(pack, indent=2, ensure_ascii=False), language="json")
+
+
+def _run_analysis(url: str | None, text: str | None) -> None:
+    try:
+        article_text, source_title, source_url = resolve_input_text(url, None, text)
+    except Exception as e:
+        st.error(f"Input error: {e}")
+        return
+
+    with st.spinner("Running BiasLens (Pass A → Pass B → Validator)…"):
+        pack = analyze_text_to_report_pack(
+            text=article_text,
             source_title=source_title,
             source_url=source_url,
         )
+
         try:
-            validate_output(report)
+            validate_output(pack)
         except ValidationError as e:
-            s.update(label="Validator failed (fail-closed)", state="error")
-            st.error("Validator failed. Report pack blocked.")
+            st.error("❌ Validator failed (fail-closed).")
             st.code(str(e))
-            st.stop()
+            return
 
-        st.session_state["report"] = report
-        s.update(label="Audit complete", state="complete")
+    st.success("✅ Validator passed.")
+    _render(pack)
 
 
-# ─────────────────────────────────────────────────────────────
-# Render (locked flow)
-# Always show one-paragraph summary first,
-# then offer Reader In-depth / Scholar In-depth
-# ─────────────────────────────────────────────────────────────
-report = st.session_state.get("report")
-if report:
-    st.divider()
-
-    rp = report.get("report_pack", {}) or {}
-    summary = rp.get("summary_one_paragraph", "")
-    reader = rp.get("reader_interpretation_guide", "")
-    findings_items = (rp.get("findings_pack", {}) or {}).get("items", []) or []
-    scholar_items = (rp.get("scholar_pack", {}) or {}).get("items", []) or []
-
-    # 1) Always show one-paragraph summary first
-    st.subheader("🧾 One-Paragraph Summary")
-    st.info(summary or "(missing)")
-
-    # Options: Reader / Scholar
-    rtab, stab = st.tabs(["Reader In-depth", "Scholar In-depth"])
-
-    with rtab:
-        st.subheader("📣 Reader Interpretation / Public Guide")
-        st.write(reader or "(missing)")
-
-        st.divider()
-        st.subheader("Findings (evidence-cited)")
-        if findings_items:
-            for it in findings_items:
-                title = f"{it.get('severity','')} — {it.get('finding_id','')}"
-                with st.expander(title, expanded=False):
-                    st.write(f"**Restated claim:** {it.get('restated_claim','')}")
-                    st.write(f"**Finding:** {it.get('finding_text','')}")
-                    st.caption(f"Evidence: {it.get('evidence_eids', [])}")
-        else:
-            st.caption("No findings in this stub run.")
-
-    with stab:
-        st.subheader("🎓 Scholar In-depth")
-        if scholar_items:
-            st.json(scholar_items)
-        else:
-            st.caption("No scholar items in this stub run (expected in foundation mode).")
-
-    with st.expander("🛠️ Debug: Full Report JSON"):
-        st.code(json.dumps(report, indent=2, ensure_ascii=False), language="json")
+if go_url and url:
+    _run_analysis(url=url, text=None)
+elif go_url and not url:
+    st.warning("Please enter a URL.")
+elif go_text and raw_text:
+    _run_analysis(url=None, text=raw_text)
+elif go_text and not raw_text:
+    st.warning("Please paste some text.")
