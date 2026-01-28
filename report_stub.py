@@ -245,9 +245,9 @@ def _mvp_metrics(claims: List[Dict[str, Any]], evidence_bank: List[Dict[str, Any
         },
         "counterevidence_status": {
             "required": False,
-            "status": "not_run",
+            "status": "not_performed",
             "search_scope": "none",
-            "result": "not_run",
+            "result": "not_performed",
             "notes": "Counterevidence search not yet enabled in this MVP build.",
         },
     }
