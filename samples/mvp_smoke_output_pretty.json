@@ -1,0 +1,116 @@
+{
+    "schema_version": "1.0",
+    "run_metadata": {
+        "mode": "mvp",
+        "source_type": "text"
+    },
+    "evidence_bank": [
+        {
+            "eid": "E1",
+            "quote": "Contract test sentence.",
+            "start_char": 0,
+            "end_char": 23,
+            "source": {
+                "type": "text",
+                "title": "manual_text",
+                "url": ""
+            }
+        },
+        {
+            "eid": "E2",
+            "quote": "Second sentence.",
+            "start_char": 24,
+            "end_char": 40,
+            "source": {
+                "type": "text",
+                "title": "manual_text",
+                "url": ""
+            }
+        }
+    ],
+    "facts_layer": {
+        "facts": [
+            {
+                "fact_id": "F1",
+                "fact_text": "Contract test sentence.",
+                "checkability": "checkable",
+                "verdict": "unknown",
+                "evidence_eids": [
+                    "E1"
+                ],
+                "notes": "MVP: verbatim sentence-fact; not independently verified."
+            },
+            {
+                "fact_id": "F2",
+                "fact_text": "Second sentence.",
+                "checkability": "checkable",
+                "verdict": "unknown",
+                "evidence_eids": [
+                    "E2"
+                ],
+                "notes": "MVP: verbatim sentence-fact; not independently verified."
+            }
+        ],
+        "fact_table_integrity": {
+            "stars": 2,
+            "label": "Poor Information Integrity",
+            "color": "orange",
+            "confidence": "low",
+            "rationale_bullets": [
+                "MVP: facts are verbatim sentence-facts derived from evidence quotes; no independent verification performed (verdict=unknown).",
+                "Stars are clamped by policy based on verdict distribution (max_allowed=2)."
+            ],
+            "gating_flags": [
+                "mvp:no_independent_fact_check",
+                "policy:fact_table_star_cap"
+            ],
+            "how_to_improve": [
+                "Add independent fact-checking so checkable facts can move from 'unknown' to true/false with sourced support.",
+                "Expand verification coverage to reduce the proportion of unknown verdicts."
+            ],
+            "maintenance_notes": []
+        }
+    },
+    "claim_registry": {
+        "claims": [
+            {
+                "claim_id": "C1",
+                "claim_text": "Contract test sentence.",
+                "stakes": "low",
+                "evidence_eids": [
+                    "E1"
+                ]
+            },
+            {
+                "claim_id": "C2",
+                "claim_text": "Second sentence.",
+                "stakes": "low",
+                "evidence_eids": [
+                    "E2"
+                ]
+            }
+        ]
+    },
+    "metrics": {
+        "evidence_density": {
+            "num_claims": 2,
+            "num_evidence_items": 2,
+            "evidence_to_claim_ratio": 1.0,
+            "density_label": "mvp",
+            "note": "MVP density is computed from verbatim stated-passage claims and evidence items."
+        }
+    },
+    "declared_limits": [
+        {
+            "limit_id": "L1",
+            "statement": "This MVP build extracts an evidence bank from input text, then derives sentence-facts and stated-passage claims. No independent verification or counterevidence retrieval is performed; fact verdicts remain 'unknown'."
+        }
+    ],
+    "report_pack": {
+        "summary_one_paragraph": "BiasLens MVP extracted verbatim evidence passages from the input text, then produced a minimal Facts Layer and a conservative Claim Registry tethered to those passages. No independent verification was performed, so checkable facts remain 'unknown' and integrity ratings should be interpreted conservatively.",
+        "reader_interpretation_guide": "Reader guide (MVP): This output is quote-tethered and conservative: it shows what was said (verbatim) but does not yet verify accuracy. Treat it as an evidence index and a checklist for what to verify next, not as a fact-check.",
+        "findings_pack": {
+            "items": []
+        }
+    }
+}
