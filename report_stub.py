@@ -1,397 +1,300 @@
-
-
 #!/usr/bin/env python3
 """
-report_stub.py
+FILE: report_stub.py
+VERSION: 0.8
+LAST UPDATED: 2026-02-01
+PURPOSE:
+BiasLens MVP builder that produces schema-legal, fail-closed-friendly output.
 
-MVP report pack builder for BiasLens deployed site.
+Contract alignment (based on your actual codebase):
+- schema_names.K is the key registry.
+- integrity_validator.validate_output() requires:
+    schema_version, run_metadata, evidence_bank, facts_layer, claim_registry, metrics, report_pack
+  and requires metrics.evidence_density (with correct evidence_to_claim_ratio).
+- enforcers.integrity_objects.enforce_integrity_objects() requires:
+    facts_layer.fact_table_integrity to be a valid integrity object.
+- enforcers.facts_star_policy caps fact_table_integrity.stars based on verdict distribution.
 
-Important:
-- This is NOT "fake analysis" and it does NOT invent facts.
-- It builds a readable report using ONLY extracted evidence quotes, claim registry,
-  and available metrics.
-- It explicitly states unknown/insufficient states when deeper verification isn't present.
-
-This file outputs the legacy schema you are currently rendering:
-schema_version, run_metadata, facts_layer, claim_registry, evidence_bank, metrics,
-declared_limits, report_pack.
+MVP safety guarantees:
+- No hallucinations: facts/claims are derived verbatim from input text.
+- Verdicts remain "unknown" in MVP (no independent verification).
 """
 
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Dict, List, Optional
+
+from schema_names import K
+from enforcers.integrity_objects import STAR_MAP, CONF_ALLOWED
+from enforcers.facts_star_policy import clamp_fact_table_stars
 
 
-def _d(x: Any) -> Dict[str, Any]:
-    return x if isinstance(x, dict) else {}
+_SENT_SPLIT_RE = re.compile(r"(?<=[\.\!\?])\s+")
 
 
-def _l(x: Any) -> List[Any]:
-    return x if isinstance(x, list) else []
-
-
+# -----------------------------
+# Small helpers
+# -----------------------------
 def _s(x: Any) -> str:
     return str(x).strip() if x is not None else ""
 
 
-def _clip(s: str, n: int = 220) -> str:
-    s = (s or "").strip()
-    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+def _split_sentences(text: str) -> List[str]:
+    t = (text or "").strip()
+    if not t:
+        return []
+    parts = _SENT_SPLIT_RE.split(t)
+    out: List[str] = []
+    for p in parts:
+        p = p.strip()
+        if p:
+            out.append(p)
+    return out
 
 
-# ─────────────────────────────────────────────────────────────
-# Public API used by pipeline / streamlit
-# ─────────────────────────────────────────────────────────────
-
-def dummy_report_pack() -> Dict[str, Any]:
-    """
-    Returns a minimal *valid* pack for integrity testing.
-    This should NOT claim "no real article analyzed" anymore.
-    """
-    text = "Dummy input for integrity test."
-    return analyze_text_to_report_pack(text=text, source_title="dummy", source_url="")
+def _safe_confidence(conf: str) -> str:
+    return conf if conf in CONF_ALLOWED else sorted(CONF_ALLOWED)[0]
 
 
-def analyze_text_to_report_pack(text: str, source_title: str = "manual_text", source_url: str = "") -> Dict[str, Any]:
-    """
-    MVP pack builder.
-    If you later wire the full engine, you can swap this function
-    to call engine.analyze_article_to_pack() and then adapt schema.
-    """
-    # For now, we treat the provided text as the "article text" and create
-    # a conservative evidence/claim scaffold without inventing facts.
+# -----------------------------
+# Integrity object factory (must match enforcers/integrity_objects.py)
+# -----------------------------
+def _integrity_object(*, stars: int, confidence: str, rationale_bullets: List[str], how_to_improve: List[str],
+                      gating_flags: Optional[List[str]] = None,
+                      maintenance_notes: Optional[List[str]] = None) -> Dict[str, Any]:
+    if stars not in STAR_MAP:
+        stars = 3
 
-    article_text = text or ""
-    article_text = article_text.strip()
+    label, color = STAR_MAP[stars]
+    confidence = _safe_confidence(confidence)
 
-    evidence_bank = _mvp_evidence_bank(article_text, source_title=source_title, source_url=source_url)
-    claim_registry = _mvp_claim_registry(evidence_bank)
+    rb = list(rationale_bullets or [])
+    if len(rb) == 0:
+        rb = ["MVP: limited verification; interpret conservatively."]
 
-    metrics = _mvp_metrics(claim_registry, evidence_bank)
+    gf = list(gating_flags or [])
+    how = list(how_to_improve or [])
+    maint = list(maintenance_notes or [])
 
-    facts_layer = {
-        "facts": [
-            {
-                "fact_id": "F1",
-                "fact_text": "An input text was provided for analysis.",
-                "checkability": "checkable",
-                "verdict": "unknown",
-                "evidence_eids": [evidence_bank[0]["eid"]] if evidence_bank else ["E1"],
-                "notes": "No independent fact-checking performed in this MVP build; epistemic state remains unknown unless verified by external checks.",
-            }
-        ]
-    }
-
-    # Build report text that is honest but not self-undermining
-    summary_one_paragraph = _one_paragraph_summary(claim_registry, evidence_bank, metrics, source_title)
-    reader_guide = _reader_interpretation_guide(claim_registry, metrics)
-
-    findings_pack = _findings_pack(claim_registry, evidence_bank, metrics)
-    scholar_pack = _scholar_pack(claim_registry, evidence_bank, metrics)
-
-    # Declared limits should be true. No more "dummy run; no real article analyzed"
-    declared_limits = [
-        {
-            "limit_id": "L1",
-            "statement": "This MVP report is evidence-indexed (verbatim quotes + linked claims) but does not yet perform independent fact-checking or full counterevidence search; unverified items remain explicitly unknown.",
-        }
-    ]
-
-    pack: Dict[str, Any] = {
-        "schema_version": "1.0",
-        "run_metadata": {
-            "mode": "mvp",
-            "source_type": "url" if source_url else "text",
-        },
-        "facts_layer": facts_layer,
-        "claim_registry": {"claims": claim_registry},
-        "evidence_bank": evidence_bank,
-        "headline_body_delta": {"present": False, "items": []},  # keep legacy field; upgrade later
-        "metrics": metrics,
-        "declared_limits": declared_limits,
-        "report_pack": {
-            "summary_one_paragraph": summary_one_paragraph,
-            "reader_interpretation_guide": reader_guide,
-            "findings_pack": {"items": findings_pack},
-            "scholar_pack": {"items": scholar_pack},
-        },
-    }
-    return pack
-
-
-# ─────────────────────────────────────────────────────────────
-# MVP builders
-# ─────────────────────────────────────────────────────────────
-
-def _mvp_evidence_bank(article_text: str, source_title: str, source_url: str) -> List[Dict[str, Any]]:
-    """
-    Conservative evidence bank: take the first ~6 excerpts as verbatim quotes.
-    This avoids pretending to have Pass A offsets/coverage if not wired.
-    If your deployed app already has Pass A, you can replace this with that output.
-    """
-    if not article_text:
-        # still return a placeholder evidence item so downstream remains valid
-        return [
-            {
-                "eid": "E1",
-                "quote": "(no text provided)",
-                "start_char": 0,
-                "end_char": 0,
-                "why_relevant": "No input text available.",
-                "source": {"type": "text", "title": source_title, "url": source_url},
-            }
+    # Contract requirements:
+    # - rationale_bullets non-empty always
+    # - how_to_improve non-empty for stars <= 4
+    if stars <= 4 and len(how) == 0:
+        how = [
+            "Add independent fact-checking for checkable facts; set verdicts true/false with sourced evidence.",
+            "Reduce unknown verdicts by expanding verification scope and retrieval.",
         ]
 
-    # Split into rough chunks on paragraph boundaries
-    paras = [p.strip() for p in article_text.split("\n") if p.strip()]
-    if not paras:
-        paras = [article_text.strip()]
+    return {
+        K.STARS: stars,
+        K.LABEL: label,
+        K.COLOR: color,
+        K.CONFIDENCE: confidence,
+        K.RATIONALE_BULLETS: rb,
+        K.GATING_FLAGS: gf,
+        K.HOW_TO_IMPROVE: how,
+        K.MAINTENANCE_NOTES: maint,
+    }
 
-    evidence: List[Dict[str, Any]] = []
-    eid = 1
+
+# -----------------------------
+# Evidence / Facts / Claims builders (MVP)
+# -----------------------------
+def _build_evidence_bank(*, text: str, source_title: Optional[str], source_url: Optional[str],
+                         max_items: int = 40) -> List[Dict[str, Any]]:
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    sents = _split_sentences(t)
+    if not sents:
+        sents = [t]
+
+    bank: List[Dict[str, Any]] = []
     cursor = 0
+    eid_n = 1
 
-    for p in paras[:8]:
-        quote = p
-        # try to find quote offset; if not found, mark as -1/-1 (still OK)
-        idx = article_text.find(quote)
-        if idx >= 0:
-            start = idx
-            end = idx + len(quote)
-        else:
-            start = -1
-            end = -1
+    for s in sents:
+        if len(bank) >= max_items:
+            break
+        s = s.strip()
+        if not s:
+            continue
 
-        evidence.append(
+        idx = t.find(s, cursor)
+        if idx < 0:
+            idx = t.find(s)
+        if idx < 0:
+            continue
+
+        start = idx
+        end = idx + len(s)
+        cursor = end
+
+        eid = f"E{eid_n}"
+        eid_n += 1
+
+        bank.append(
             {
-                "eid": f"E{eid}",
-                "quote": quote[:400],
-                "start_char": start,
-                "end_char": end,
-                "why_relevant": "Verbatim excerpt used to anchor extracted claims.",
-                "source": {"type": "url" if source_url else "text", "title": source_title, "url": source_url},
+                K.EID: eid,
+                K.QUOTE: s,
+                K.START_CHAR: int(start),
+                K.END_CHAR: int(end),
+                # optional fields accepted by validator:
+                K.SOURCE: {
+                    K.TYPE: "text",
+                    K.TITLE: _s(source_title),
+                    K.URL: _s(source_url),
+                },
             }
         )
-        eid += 1
 
-    return evidence
+    return bank
 
 
-def _mvp_claim_registry(evidence_bank: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    MVP claim registry: each claim is a conservative restatement of an evidence excerpt.
-    Stakes are heuristic: 'high' if it contains numbers, accusations, or institutional actions.
-    """
-    claims: List[Dict[str, Any]] = []
-    cid = 1
-    for ev in evidence_bank[:8]:
-        q = _s(_d(ev).get("quote"))
-        if not q:
+def _extract_facts_from_evidence(evidence_bank: List[Dict[str, Any]], *, max_facts: int = 40) -> List[Dict[str, Any]]:
+    facts: List[Dict[str, Any]] = []
+    fid_n = 1
+    for e in evidence_bank:
+        if len(facts) >= max_facts:
+            break
+        if not isinstance(e, dict):
             continue
-        stakes = "low"
-        qlow = q.lower()
-        if any(tok in qlow for tok in ["impeach", "murder", "fraud", "illegal", "corrupt", "violence", "killed"]):
-            stakes = "high"
-        if any(ch.isdigit() for ch in q):
-            stakes = "high"
+        quote = _s(e.get(K.QUOTE))
+        eid = _s(e.get(K.EID))
+        if not quote or not eid:
+            continue
+
+        facts.append(
+            {
+                K.FACT_ID: f"F{fid_n}",
+                K.FACT_TEXT: quote,                 # verbatim
+                K.CHECKABILITY: "checkable",
+                K.VERDICT: "unknown",               # MVP: no independent verification
+                K.EVIDENCE_EIDS: [eid],             # present => must reference valid EIDs
+                K.NOTES: "MVP: verbatim sentence-fact; not independently verified.",
+            }
+        )
+        fid_n += 1
+    return facts
+
+
+def _build_claims_from_evidence(evidence_bank: List[Dict[str, Any]], *, max_claims: int = 25) -> List[Dict[str, Any]]:
+    claims: List[Dict[str, Any]] = []
+    cid_n = 1
+    for e in evidence_bank:
+        if len(claims) >= max_claims:
+            break
+        if not isinstance(e, dict):
+            continue
+        quote = _s(e.get(K.QUOTE))
+        eid = _s(e.get(K.EID))
+        if not quote or not eid:
+            continue
 
         claims.append(
             {
-                "claim_id": f"C{cid}",
-                "claim_text": q[:500],
-                "stakes": stakes,
-                "evidence_eids": [_s(_d(ev).get("eid"))] if _s(_d(ev).get("eid")) else ["E1"],
+                K.CLAIM_ID: f"C{cid_n}",
+                K.CLAIM_TEXT: quote,                # verbatim stated-passage claim
+                K.STAKES: "low",
+                K.EVIDENCE_EIDS: [eid],
             }
         )
-        cid += 1
-
-    if not claims:
-        claims = [
-            {
-                "claim_id": "C1",
-                "claim_text": "The text contains statements that require evidence-linked evaluation (explicitly unknown).",
-                "stakes": "low",
-                "evidence_eids": ["E1"],
-            }
-        ]
+        cid_n += 1
     return claims
 
 
-def _mvp_metrics(claims: List[Dict[str, Any]], evidence_bank: List[Dict[str, Any]]) -> Dict[str, Any]:
+# -----------------------------
+# Public builder
+# -----------------------------
+def analyze_text_to_report_pack(*, text: str, source_title: Optional[str] = None,
+                                source_url: Optional[str] = None) -> Dict[str, Any]:
+    # Build evidence/facts/claims
+    evidence_bank = _build_evidence_bank(text=text, source_title=source_title, source_url=source_url, max_items=40)
+    facts = _extract_facts_from_evidence(evidence_bank, max_facts=40)
+    claims = _build_claims_from_evidence(evidence_bank, max_claims=25)
+
+    # Fact table integrity: propose 3, then clamp to policy (prevents cap failures)
+    proposed_stars = 3
+    final_stars, max_star = clamp_fact_table_stars(stars=proposed_stars, facts=facts)
+
+    fact_table_integrity = _integrity_object(
+        stars=final_stars,
+        confidence="low",
+        rationale_bullets=[
+            "MVP: facts are verbatim sentence-facts derived from evidence quotes; no independent verification performed (verdict=unknown).",
+            f"Stars are clamped by policy based on verdict distribution (max_allowed={max_star}).",
+        ],
+        how_to_improve=[
+            "Add independent fact-checking so checkable facts can move from 'unknown' to true/false with sourced support.",
+            "Expand verification coverage to reduce the proportion of unknown verdicts.",
+        ],
+        gating_flags=["mvp:no_independent_fact_check", "policy:fact_table_star_cap"],
+    )
+
+    # Required metrics.evidence_density (validator checks ratio correctness)
     num_claims = len(claims)
-    num_high = sum(1 for c in claims if _s(_d(c).get("stakes")).lower() == "high")
-    num_evidence = len(evidence_bank)
-    ratio = (num_evidence / num_claims) if num_claims else None
+    num_evidence_items = len(evidence_bank)
+    evidence_to_claim_ratio = num_evidence_items / max(1, num_claims)
 
-    if ratio is None:
-        density_label = "unknown"
-    elif ratio < 0.8:
-        density_label = "low"
-    elif ratio < 1.5:
-        density_label = "medium"
-    else:
-        density_label = "high"
-
-    return {
-        "evidence_density": {
-            "num_claims": num_claims,
-            "num_high_stakes_claims": num_high,
-            "num_evidence_items": num_evidence,
-            "evidence_to_claim_ratio": ratio,
-            "evidence_to_high_stakes_claim_ratio": (num_evidence / num_high) if num_high else None,
-            "density_label": density_label,
-            "note": "MVP metric: compares number of verbatim excerpts to extracted claims.",
+    out: Dict[str, Any] = {
+        K.SCHEMA_VERSION: "1.0",
+        K.RUN_METADATA: {
+            K.MODE: "mvp",
+            K.SOURCE_TYPE: "text",
         },
-        "counterevidence_status": {
-            "required": False,
-            "status": "not_performed",
-            "search_scope": "none",
-            "result": "not_performed",
-            "notes": "Counterevidence search not yet enabled in this MVP build.",
+        K.EVIDENCE_BANK: evidence_bank,
+        K.FACTS_LAYER: {
+            K.FACTS: facts,
+            K.FACT_TABLE_INTEGRITY: fact_table_integrity,
+        },
+        K.CLAIM_REGISTRY: {
+            K.CLAIMS: claims,
+        },
+        K.METRICS: {
+            K.EVIDENCE_DENSITY: {
+                K.NUM_CLAIMS: num_claims,
+                K.NUM_EVIDENCE_ITEMS: num_evidence_items,
+                K.EVIDENCE_TO_CLAIM_RATIO: evidence_to_claim_ratio,
+                # Optional fields (allowed; validator ignores them if present)
+                K.DENSITY_LABEL: "mvp",
+                K.NOTE: "MVP density is computed from verbatim stated-passage claims and evidence items.",
+            }
+        },
+        K.DECLARED_LIMITS: [
+            {
+                K.LIMIT_ID: "L1",
+                K.STATEMENT: (
+                    "This MVP build extracts an evidence bank from input text, then derives sentence-facts and stated-passage claims. "
+                    "No independent verification or counterevidence retrieval is performed; fact verdicts remain 'unknown'."
+                ),
+            }
+        ],
+        K.REPORT_PACK: {
+            K.SUMMARY_ONE_PARAGRAPH: (
+                "BiasLens MVP extracted verbatim evidence passages from the input text, then produced a minimal Facts Layer "
+                "and a conservative Claim Registry tethered to those passages. No independent verification was performed, "
+                "so checkable facts remain 'unknown' and integrity ratings should be interpreted conservatively."
+            ),
+            K.READER_INTERPRETATION_GUIDE: (
+                "Reader guide (MVP): This output is quote-tethered and conservative: it shows what was said (verbatim) but does not "
+                "yet verify accuracy. Treat it as an evidence index and a checklist for what to verify next, not as a fact-check."
+            ),
+            K.FINDINGS_PACK: {
+                # Validator allows empty list; keep MVP minimal and schema-legal.
+                "items": []
+            },
+            # Optional scholar_pack omitted in MVP
         },
     }
 
+    return out
 
-def _one_paragraph_summary(
-    claims: List[Dict[str, Any]],
-    evidence_bank: List[Dict[str, Any]],
-    metrics: Dict[str, Any],
-    source_title: str,
-) -> str:
-    density = _d(metrics.get("evidence_density"))
-    label = _s(density.get("density_label"))
-    num_claims = density.get("num_claims", len(claims))
-    num_high = density.get("num_high_stakes_claims", 0)
 
-    # Summarize the topic using first claim excerpt
-    topic_hint = ""
-    if claims:
-        topic_hint = _clip(_s(_d(claims[0]).get("claim_text")), 160)
-
-    return (
-        f"BiasLens extracted {num_claims} evidence-anchored claim(s) from the provided text and linked each to verbatim excerpts. "
-        f"Evidence density is {label or 'unknown'}; {num_high} claim(s) were flagged as higher-stakes and would benefit most from independent verification. "
-        f"This MVP report does not assert truth beyond the quoted text; where verification is not performed, epistemic status remains unknown. "
-        f"Topic signal (from the text): “{topic_hint}”."
+def dummy_report_pack() -> Dict[str, Any]:
+    return analyze_text_to_report_pack(
+        text="This is a dummy test sentence. It exists to verify validator/enforcer behavior.",
+        source_title="dummy",
+        source_url="",
     )
-
-
-def _reader_interpretation_guide(claims: List[Dict[str, Any]], metrics: Dict[str, Any]) -> str:
-    density = _d(metrics.get("evidence_density"))
-    label = _s(density.get("density_label"))
-    num_high = density.get("num_high_stakes_claims", 0)
-
-    kind = "quote-driven reporting" if label in ("medium", "high") else "assertion-forward reporting"
-    high_note = (
-        "Because there are higher-stakes claims here, treat quotes as *claims*, not confirmation, and look for primary documents or multi-source confirmation."
-        if num_high
-        else "Even low-stakes claims can shape interpretation through framing; still separate attribution from verification."
-    )
-
-    return (
-        f"This piece reads like {kind}: it presents claims anchored to what people said or what the text asserts. "
-        f"BiasLens reports structure-based integrity signals (evidence discipline, logic, omission-as-absence-of-context) and does not infer intent. "
-        f"{high_note}"
-    )
-
-
-def _findings_pack(
-    claims: List[Dict[str, Any]],
-    evidence_bank: List[Dict[str, Any]],
-    metrics: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    """
-    MVP findings: do not invent—only structural cues.
-    Each finding is tied to a claim + evidence EID.
-    """
-    items: List[Dict[str, Any]] = []
-    density = _d(metrics.get("evidence_density"))
-    label = _s(density.get("density_label"))
-
-    for c in claims[:12]:
-        cd = _d(c)
-        claim_id = _s(cd.get("claim_id"))
-        restated = _s(cd.get("claim_text"))
-        stakes = _s(cd.get("stakes")).lower()
-        eids = _l(cd.get("evidence_eids")) or ["E1"]
-
-        sev = "🟢"
-        if stakes == "high":
-            sev = "🟡"  # higher stakes => higher concern if unverified
-
-        finding_text = (
-            "Evidence-anchored claim extracted. In this MVP build, the system does not independently verify truth; epistemic status remains unknown unless externally confirmed."
-        )
-        if label == "low":
-            finding_text = (
-                "Claim extracted, but the visible evidence footprint is thin relative to the number of claims. Treat attribution as non-verification and seek primary sources."
-            )
-
-        items.append(
-            {
-                "finding_id": f"FP{len(items)+1}",
-                "claim_id": claim_id,
-                "restated_claim": restated,
-                "finding_text": finding_text,
-                "severity": sev,
-                "evidence_eids": eids,
-            }
-        )
-
-    return items
-
-
-def _scholar_pack(
-    claims: List[Dict[str, Any]],
-    evidence_bank: List[Dict[str, Any]],
-    metrics: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    """
-    MVP scholar pack: compact tables.
-    """
-    items: List[Dict[str, Any]] = []
-
-    density = _d(metrics.get("evidence_density"))
-    items.append(
-        {
-            "item_id": "S1",
-            "title": "Evidence Discipline Snapshot",
-            "content": json.dumps(density, indent=2, ensure_ascii=False),
-        }
-    )
-
-    # Evidence table
-    ev_rows = []
-    for ev in evidence_bank[:25]:
-        evd = _d(ev)
-        ev_rows.append({"eid": _s(evd.get("eid")), "quote": _clip(_s(evd.get("quote")), 240)})
-    items.append(
-        {
-            "item_id": "S2",
-            "title": "Evidence Bank (verbatim excerpts)",
-            "content": json.dumps(ev_rows, indent=2, ensure_ascii=False),
-        }
-    )
-
-    # Claim table
-    c_rows = []
-    for c in claims[:25]:
-        cd = _d(c)
-        c_rows.append(
-            {
-                "claim_id": _s(cd.get("claim_id")),
-                "stakes": _s(cd.get("stakes")),
-                "evidence_eids": cd.get("evidence_eids", []),
-                "claim_text": _clip(_s(cd.get("claim_text")), 240),
-            }
-        )
-    items.append(
-        {
-            "item_id": "S3",
-            "title": "Claim Registry",
-            "content": json.dumps(c_rows, indent=2, ensure_ascii=False),
-        }
-    )
-
-    return items
