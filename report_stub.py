@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+
 FILE: report_stub.py
 VERSION: 1.0
 LAST UPDATED: 2026-02-02
@@ -24,6 +25,14 @@ MVP safety guarantees:
 - No hallucinations: facts/claims are derived verbatim from input text.
 - Verdicts remain "unknown" in MVP (no independent verification).
 """
+# 🔒 ARCHITECTURE LOCK — PRIMARY EMITTER
+# This file is the single authorized schema emitter for BiasLens.
+#
+# Rules:
+# - Do NOT create alternate emitters.
+# - Do NOT fork the schema.
+# - Schema changes REQUIRE a version bump.
+# - Pass B must extend this output, never replace it.
 
 from __future__ import annotations
 
@@ -291,7 +300,7 @@ def analyze_text_to_report_pack(
     evidence_to_claim_ratio = num_evidence_items / max(1, num_claims)
 
     out: Dict[str, Any] = {
-        K.SCHEMA_VERSION: "1.0",
+        K.SCHEMA_VERSION: "1.0.0",
         K.RUN_METADATA: {K.MODE: "mvp", K.SOURCE_TYPE: "text"},
         K.EVIDENCE_BANK: evidence_bank,
         K.FACTS_LAYER: {
