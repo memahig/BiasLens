@@ -14,14 +14,10 @@ from typing import Optional
 from io_sources import resolve_input_text
 
 # LOCK: This is the ONLY authorized report builder.
-from report_stub import dummy_report_pack, analyze_text_to_report_pack
+from report_stub import dummy_report_pack
+from builders.report_builder import build_report
 
 from integrity_validator import validate_output, ValidationError
-
-
-# 🔒 Architecture lock — object reference (NOT a string)
-AUTHORIZED_BUILDER = analyze_text_to_report_pack
-
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -52,21 +48,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(e))
         return 2
 
-    # 🔒 Authorized builder boundary
-    report = analyze_text_to_report_pack(
+     # 🔒 Authorized builder boundary
+    report = build_report(
         text=text,
         source_title=source_title,
         source_url=source_url,
     )
 
-    # 🔒 Builder identity lock
-    if analyze_text_to_report_pack is not AUTHORIZED_BUILDER:
-        raise RuntimeError("Architecture violation: unauthorized builder detected.")
-
     if not isinstance(report, dict):
         raise RuntimeError("Builder violation: report must be a dict matching schema.")
 
-    # Fail-closed validation
+   # Fail-closed validation
     try:
         validate_output(report)
     except ValidationError as e:
