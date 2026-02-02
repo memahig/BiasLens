@@ -1,28 +1,32 @@
-
 #!/usr/bin/env python3
 """
-renderer.py
-
-Renders BiasLens output into readable Markdown.
+FILE: renderer.py
+VERSION: 0.3
+LAST UPDATED: 2026-02-02
+PURPOSE:
+Renders BiasLens output into readable Markdown for Streamlit.
 
 Supports TWO schemas:
-A) Legacy/stub schema (your current deployed JSON):
+A) Legacy/stub schema (current deployed JSON):
    - run_metadata, facts_layer, claim_registry, evidence_bank, metrics, report_pack, etc.
 
 B) Brick-7 pack schema (future/alternate):
    - article_layer, claim_registry (list), claim_evaluations, headline_body_delta (dict), reader_interpretation, etc.
 
-Goal: Make the site feel real NOW (Reader voice + substantive Overview),
-without forcing a schema migration first.
+Renderer goals (current step):
+- Make the site feel real NOW, while staying integrity-safe.
+- Surface "pillar sockets" status in Overview.
+- Always expose pillar objects in Scholar view for debugging.
+- In Reader view, mention pillars only when meaningful; for MVP, be explicit about "not run".
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from rating_style import render_rating
-
+from schema_names import K
 
 
 # ─────────────────────────────────────────────────────────────
@@ -32,50 +36,94 @@ from rating_style import render_rating
 def _d(x: Any) -> Dict[str, Any]:
     return x if isinstance(x, dict) else {}
 
+
 def _l(x: Any) -> List[Any]:
     return x if isinstance(x, list) else []
 
+
 def _s(x: Any) -> str:
     return str(x).strip() if x is not None else ""
+
 
 def _clip(s: str, n: int = 260) -> str:
     s = (s or "").strip()
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
+
 def _bullet(lines: List[str], text: str) -> None:
     lines.append(f"- {text}")
 
+
 def _is_stub_schema(pack: Dict[str, Any]) -> bool:
-    # Your pasted pack has these keys
-    return "report_pack" in pack and "run_metadata" in pack and "facts_layer" in pack
+    return K.REPORT_PACK in pack and K.RUN_METADATA in pack and K.FACTS_LAYER in pack
+
 
 def _title_url_from_stub(pack: Dict[str, Any]) -> Tuple[str, str]:
-    # evidence_bank[0].source.title/url exists in your pack
-    ev = _l(pack.get("evidence_bank"))
+    ev = _l(pack.get(K.EVIDENCE_BANK))
     if ev:
-        src = _d(_d(ev[0]).get("source"))
-        return _s(src.get("title")) or "scraped_url", _s(src.get("url"))
+        src = _d(_d(ev[0]).get(K.SOURCE))
+        return _s(src.get(K.TITLE)) or "scraped_url", _s(src.get(K.URL))
     return "BiasLens Report", ""
+
 
 def _title_url_from_brick7(pack: Dict[str, Any]) -> Tuple[str, str]:
     return _s(pack.get("source_title")) or "BiasLens Report", _s(pack.get("source_url"))
 
-def _rating_rank(rating) -> int:
+
+def _rating_rank(rating: Any) -> int:
     try:
         r = int(rating)
     except Exception:
         r = 3
     return max(1, min(5, r))
 
+
 def _evidence_lookup(pack: Dict[str, Any]) -> Dict[str, str]:
     lookup: Dict[str, str] = {}
-    for ev in _l(pack.get("evidence_bank")):
+    for ev in _l(pack.get(K.EVIDENCE_BANK)):
         evd = _d(ev)
-        eid = _s(evd.get("eid"))
-        quote = _s(evd.get("quote"))
+        eid = _s(evd.get(K.EID))
+        quote = _s(evd.get(K.QUOTE))
         if eid and quote:
             lookup[eid] = quote
     return lookup
+
+
+def _pillar_status_from_obj(obj: Any) -> str:
+    """
+    Conservative, schema-tolerant:
+    - presentation_integrity has K.MODULE_STATUS by contract (run|not_run)
+    - other pillar sockets may or may not include status (treat missing as not_run)
+    """
+    if not isinstance(obj, dict):
+        return "not_run"
+    st = obj.get(K.MODULE_STATUS, obj.get("status"))
+    st = _s(st).lower()
+    if st in ("run", "not_run"):
+        return st
+    return "not_run"
+
+
+def _stub_pillar_statuses(pack: Dict[str, Any]) -> Dict[str, str]:
+    facts_layer = _d(pack.get(K.FACTS_LAYER))
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+
+    reality_alignment = facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)
+    premise_independence = article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)
+    presentation_integrity = article_layer.get(K.PRESENTATION_INTEGRITY)
+
+    return {
+        "Reality Alignment": _pillar_status_from_obj(reality_alignment),
+        "Reasoning Integrity (Premise Independence)": _pillar_status_from_obj(premise_independence),
+        "Presentation Integrity": _pillar_status_from_obj(presentation_integrity),
+    }
+
+
+def _format_status(st: str) -> str:
+    st = (st or "").strip().lower()
+    if st == "run":
+        return "✅ run"
+    return "⏳ not_run"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -84,27 +132,28 @@ def _evidence_lookup(pack: Dict[str, Any]) -> Dict[str, str]:
 
 def _stub_overview(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_stub(pack)
-    report_pack = _d(pack.get("report_pack"))
-    onep = _s(report_pack.get("summary_one_paragraph")) or "(No summary.)"
+    report_pack = _d(pack.get(K.REPORT_PACK))
+    onep = _s(report_pack.get(K.SUMMARY_ONE_PARAGRAPH)) or "(No summary.)"
 
-    metrics = _d(pack.get("metrics"))
-    density = _d(metrics.get("evidence_density"))
-    ratio = density.get("evidence_to_claim_ratio", None)
-    density_label = _s(density.get("density_label"))
-    num_claims = density.get("num_claims", None)
-    num_evidence = density.get("num_evidence_items", None)
+    metrics = _d(pack.get(K.METRICS))
+    density = _d(metrics.get(K.EVIDENCE_DENSITY))
+    ratio = density.get(K.EVIDENCE_TO_CLAIM_RATIO, None)
+    density_label = _s(density.get(K.DENSITY_LABEL))
+    num_claims = density.get(K.NUM_CLAIMS, None)
+    num_evidence = density.get(K.NUM_EVIDENCE_ITEMS, None)
 
-    findings_pack = _d(report_pack.get("findings_pack"))
-    items = _l(findings_pack.get("items"))
+    findings_pack = _d(report_pack.get(K.FINDINGS_PACK))
+    items = _l(findings_pack.get(K.ITEMS))  # findings_pack uses literal "items"
 
     evidence = _evidence_lookup(pack)
 
-    # Take top findings (if any)
     top = items[:]
-    top.sort(key=lambda x: _rating_rank(_d(x).get("rating")), reverse=True)
+    top.sort(key=lambda x: _rating_rank(_d(x).get(K.RATING)), reverse=True)
     top = top[:5]
 
-    limits = _l(pack.get("declared_limits"))
+    limits = _l(pack.get(K.DECLARED_LIMITS))
+
+    pillar_status = _stub_pillar_statuses(pack)
 
     lines: List[str] = []
     lines.append(f"# 🛡️ BiasLens Overview — {title}")
@@ -114,14 +163,21 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     lines.append("## One-paragraph summary")
     lines.append(onep)
     lines.append("")
+
+    lines.append("## Pillars status")
+    _bullet(lines, f"Reality Alignment: **{_format_status(pillar_status['Reality Alignment'])}**")
+    _bullet(lines, f"Reasoning Integrity (Premise Independence): **{_format_status(pillar_status['Reasoning Integrity (Premise Independence)'])}**")
+    _bullet(lines, f"Presentation Integrity: **{_format_status(pillar_status['Presentation Integrity'])}**")
+    lines.append("")
+
     lines.append("## Top findings (evidence-cited)")
     if top:
         for it in top:
             itd = _d(it)
-            rating = itd.get("rating", 3)
-            claim_id = _s(itd.get("claim_id"))
-            txt = _s(itd.get("finding_text"))
-            eids = _l(itd.get("evidence_eids"))
+            rating = itd.get(K.RATING, 3)
+            claim_id = _s(itd.get(K.CLAIM_ID))
+            txt = _s(itd.get(K.FINDING_TEXT))
+            eids = _l(itd.get(K.EVIDENCE_EIDS))
             eid_str = ", ".join([_s(e) for e in eids if _s(e)])
             quote = ""
             if eids:
@@ -143,12 +199,13 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
         _bullet(lines, f"Evidence quotes extracted: **{num_evidence}**")
     if ratio is not None:
         _bullet(lines, f"Evidence-to-claim ratio: **{ratio}** ({density_label or 'n/a'})")
+
     lines.append("")
     lines.append("## Declared limits / epistemic humility")
     if limits:
         for lim in limits[:5]:
             ld = _d(lim)
-            _bullet(lines, _s(ld.get("statement")) or "(limit statement)")
+            _bullet(lines, _s(ld.get(K.STATEMENT)) or "(limit statement)")
     else:
         _bullet(lines, "No limits declared.")
 
@@ -156,34 +213,30 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
 
 
 def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
-    """
-    Canonical-ish “Public Guide” voice for the current stub schema,
-    without inventing facts.
-    """
     title, url = _title_url_from_stub(pack)
-    report_pack = _d(pack.get("report_pack"))
-    onep = _s(report_pack.get("summary_one_paragraph")) or "(No summary.)"
+    report_pack = _d(pack.get(K.REPORT_PACK))
+    onep = _s(report_pack.get(K.SUMMARY_ONE_PARAGRAPH)) or "(No summary.)"
 
-    metrics = _d(pack.get("metrics"))
-    density = _d(metrics.get("evidence_density"))
-    density_label = _s(density.get("density_label"))
-    ratio = density.get("evidence_to_claim_ratio", None)
+    metrics = _d(pack.get(K.METRICS))
+    density = _d(metrics.get(K.EVIDENCE_DENSITY))
+    density_label = _s(density.get(K.DENSITY_LABEL))
+    ratio = density.get(K.EVIDENCE_TO_CLAIM_RATIO, None)
 
-    counter = _d(metrics.get("counterevidence_status"))
-    counter_required = bool(counter.get("required", False))
-    counter_status = _s(counter.get("status"))
-    counter_scope = _s(counter.get("search_scope"))
-    counter_result = _s(counter.get("result"))
+    counter = _d(metrics.get(K.COUNTEREVIDENCE_STATUS))
+    counter_required = bool(counter.get(K.REQUIRED, False))
+    counter_status = _s(counter.get(K.STATUS))
+    counter_scope = _s(counter.get(K.SEARCH_SCOPE))
+    counter_result = _s(counter.get(K.RESULT))
 
-    hbd = _d(pack.get("headline_body_delta"))
-    hbd_present = bool(hbd.get("present", False))
-    hbd_items = _l(hbd.get("items"))
+    hbd = _d(pack.get(K.HEADLINE_BODY_DELTA))
+    hbd_present = bool(hbd.get(K.PRESENT, False))
+    hbd_items = _l(hbd.get(K.ITEMS))
 
-    claims = _d(pack.get("claim_registry")).get("claims", [])
-    claims = _l(claims)
-    hi_stakes = [c for c in claims if _s(_d(c).get("stakes")).lower() == "high"]
+    claims = _l(_d(pack.get(K.CLAIM_REGISTRY)).get(K.CLAIMS))
+    hi_stakes = [c for c in claims if _s(_d(c).get(K.STAKES)).lower() == "high"]
 
-    guide = _s(report_pack.get("reader_interpretation_guide"))
+    guide = _s(report_pack.get(K.READER_INTERPRETATION_GUIDE))
+    pillar_status = _stub_pillar_statuses(pack)
 
     lines: List[str] = []
     lines.append(f"# 🧭 Reader In-Depth — {title}")
@@ -195,11 +248,10 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("## What kind of piece is this (as a reader experience)?")
 
-    # simple classification heuristics (structure-based only)
-    if density_label in ("low",) or (ratio is not None and ratio < 0.8):
+    if density_label in ("low",) or (ratio is not None and isinstance(ratio, (int, float)) and ratio < 0.8):
         _bullet(lines, "This reads like **assertion-forward reporting**: claims are presented, but the visible evidence footprint is relatively thin.")
     else:
-        _bullet(lines, "This reads like **quote-driven political reporting**: multiple claims are anchored to quoted passages, but deeper verification may still be limited.")
+        _bullet(lines, "This reads like **quote-driven reporting**: multiple claims are anchored to quoted passages, but deeper verification may still be limited.")
 
     if hi_stakes:
         _bullet(lines, f"It contains **{len(hi_stakes)} high-stakes claim(s)** (higher consequences if wrong), which merit stronger sourcing and counterevidence checks.")
@@ -213,21 +265,33 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
 
     lines.append("")
     lines.append("## How it can work on readers (structure-based mechanisms)")
-    # Mechanism set that matches your terminology direction
     _bullet(lines, "**Attribution-as-authority:** quotes from actors can feel like evidence, but quotes are not verification.")
-    _bullet(lines, "**Reaction reporting risk:** reporting others’ statements can transmit the emotional payload even when the article stays neutral.")
-    _bullet(lines, "**Scope inflation watch:** local tactical claims can quietly become broad conclusions if not fenced with qualifiers.")
-    _bullet(lines, "**Omission-dependent reasoning watch:** if key comparative context is missing, conclusions may lean on what isn’t said.")
+    _bullet(lines, "**Reaction reporting risk:** repeating charged statements can transmit emotional payload even when the article stays neutral.")
+    _bullet(lines, "**Scope inflation watch:** narrow facts can quietly become broad conclusions if not fenced with qualifiers.")
+    _bullet(lines, "**Absence of expected context:** if key comparative cases are missing, conclusions may lean on what isn’t said.")
 
     lines.append("")
     lines.append("## What BiasLens can and cannot conclude from this run")
-    if guide:
-        lines.append(_clip(guide, 600))
-    else:
+
+    # Decision 2: Reader mentions pillars only if significant to meaning.
+    # In MVP, all are not_run; that *is* significant because it prevents readers from treating this as a fact-check.
+    ra = pillar_status["Reality Alignment"]
+    pi = pillar_status["Reasoning Integrity (Premise Independence)"]
+    pr = pillar_status["Presentation Integrity"]
+
+    if ra != "run" or pi != "run":
         lines.append(
-            "This run is integrity-safe: it shows extracted evidence and claims without making strong factual judgments beyond the evidence provided. "
-            "Where verification isn’t performed, the correct status is **unknown**, not speculation."
+            "This build did **not** run the two core analysis pillars yet (**Reality Alignment** and **Reasoning Integrity / Premise Independence**). "
+            "So treat extracted claims as an **evidence index** (what was said), not as a determination of what is true or well-supported."
         )
+    if pr != "run":
+        lines.append(
+            "Presentation Integrity was also **not run** here, so headline/body effects should be treated as unassessed unless explicitly flagged."
+        )
+
+    if guide:
+        lines.append("")
+        lines.append(_clip(guide, 600))
 
     lines.append("")
     lines.append("## Counterevidence status")
@@ -252,17 +316,36 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_stub(pack)
     evidence = _evidence_lookup(pack)
 
-    claims = _d(pack.get("claim_registry")).get("claims", [])
-    claims = _l(claims)
+    claims = _l(_d(pack.get(K.CLAIM_REGISTRY)).get(K.CLAIMS))
 
-    report_pack = _d(pack.get("report_pack"))
-    findings_pack = _d(report_pack.get("findings_pack"))
-    fitems = _l(findings_pack.get("items"))
+    report_pack = _d(pack.get(K.REPORT_PACK))
+    findings_pack = _d(report_pack.get(K.FINDINGS_PACK))
+    fitems = _l(findings_pack.get(K.ITEMS))  # literal "items"
+
+    facts_layer = _d(pack.get(K.FACTS_LAYER))
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
 
     lines: List[str] = []
     lines.append(f"# 🧪 Scholar In-Depth — {title}")
     if url:
         lines.append(f"*Source:* {url}")
+    lines.append("")
+
+    lines.append("## Pillars (raw objects)")
+    lines.append("### facts_layer.reality_alignment_analysis")
+    lines.append("```json")
+    lines.append(json.dumps(facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS, {}), indent=2, ensure_ascii=False))
+    lines.append("```")
+    lines.append("")
+    lines.append("### article_layer.premise_independence_analysis")
+    lines.append("```json")
+    lines.append(json.dumps(article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS, {}), indent=2, ensure_ascii=False))
+    lines.append("```")
+    lines.append("")
+    lines.append("### article_layer.presentation_integrity")
+    lines.append("```json")
+    lines.append(json.dumps(article_layer.get(K.PRESENTATION_INTEGRITY, {}), indent=2, ensure_ascii=False))
+    lines.append("```")
     lines.append("")
 
     lines.append("## Evidence bank (verbatim excerpts)")
@@ -273,19 +356,22 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
     lines.append("## Claim registry (extracted)")
     for c in claims[:25]:
         cd = _d(c)
-        lines.append(f"- **{_s(cd.get('claim_id'))}** (stakes: {_s(cd.get('stakes'))}): {_clip(_s(cd.get('claim_text')), 320)}")
-        lines.append(f"  - evidence_eids: {cd.get('evidence_eids', [])}")
+        lines.append(
+            f"- **{_s(cd.get(K.CLAIM_ID))}** (stakes: {_s(cd.get(K.STAKES))}): "
+            f"{_clip(_s(cd.get(K.CLAIM_TEXT)), 320)}"
+        )
+        lines.append(f"  - evidence_eids: {cd.get(K.EVIDENCE_EIDS, [])}")
 
     lines.append("")
     lines.append("## Findings pack (current run)")
     if fitems:
         for it in fitems[:25]:
             itd = _d(it)
-            claim_id = _s(itd.get("claim_id"))
-            rest = _clip(_s(itd.get("restated_claim")), 240)
-            txt = _s(itd.get("finding_text"))
-            rating = itd.get("rating", 3)
-            eids = itd.get("evidence_eids", [])
+            claim_id = _s(itd.get(K.CLAIM_ID))
+            rest = _clip(_s(itd.get(K.RESTATED_CLAIM)), 240)
+            txt = _s(itd.get(K.FINDING_TEXT))
+            rating = itd.get(K.RATING, 3)
+            eids = itd.get(K.EVIDENCE_EIDS, [])
             lines.append(f"- {render_rating(rating)} **{claim_id}**: {rest}")
             lines.append(f"  - finding: {txt}")
             lines.append(f"  - evidence_eids: {eids}")
@@ -301,12 +387,21 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
 
 def _brick7_overview(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_brick7(pack)
-    article = _d(pack.get("article_layer"))
+    article = _d(pack.get(K.ARTICLE_LAYER))
     onep = _s(article.get("one_paragraph_summary")) or "(No summary.)"
 
-    evidence_bank = _l(pack.get("evidence_bank"))
-    claim_registry = _l(pack.get("claim_registry"))
-    hbd = _d(pack.get("headline_body_delta"))
+    evidence_bank = _l(pack.get(K.EVIDENCE_BANK))
+    claim_registry = _l(pack.get(K.CLAIM_REGISTRY))
+    hbd = _d(pack.get(K.HEADLINE_BODY_DELTA))
+
+    # pillar sockets (best-effort)
+    facts_layer = _d(pack.get(K.FACTS_LAYER))
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+    pillar_status = {
+        "Reality Alignment": _pillar_status_from_obj(facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)),
+        "Reasoning Integrity (Premise Independence)": _pillar_status_from_obj(article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)),
+        "Presentation Integrity": _pillar_status_from_obj(article_layer.get(K.PRESENTATION_INTEGRITY)),
+    }
 
     lines: List[str] = []
     lines.append(f"# 🛡️ BiasLens Overview — {title}")
@@ -316,6 +411,13 @@ def _brick7_overview(pack: Dict[str, Any]) -> str:
     lines.append("## One-paragraph summary")
     lines.append(onep)
     lines.append("")
+
+    lines.append("## Pillars status")
+    _bullet(lines, f"Reality Alignment: **{_format_status(pillar_status['Reality Alignment'])}**")
+    _bullet(lines, f"Reasoning Integrity (Premise Independence): **{_format_status(pillar_status['Reasoning Integrity (Premise Independence)'])}**")
+    _bullet(lines, f"Presentation Integrity: **{_format_status(pillar_status['Presentation Integrity'])}**")
+    lines.append("")
+
     lines.append("## What was analyzed")
     _bullet(lines, f"Evidence quotes extracted: **{len(evidence_bank)}**")
     _bullet(lines, f"Claims extracted: **{len(claim_registry)}**")
@@ -328,7 +430,7 @@ def _brick7_overview(pack: Dict[str, Any]) -> str:
 
 def _brick7_reader(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_brick7(pack)
-    article = _d(pack.get("article_layer"))
+    article = _d(pack.get(K.ARTICLE_LAYER))
     onep = _s(article.get("one_paragraph_summary")) or "(No summary.)"
     reader = _d(pack.get("reader_interpretation"))
     mechs = _l(reader.get("named_mechanisms"))
@@ -348,6 +450,7 @@ def _brick7_reader(pack: Dict[str, Any]) -> str:
             _bullet(lines, f"**{_s(md.get('mechanism_name'))}** — {_s(md.get('plain_language_explanation'))}")
     else:
         _bullet(lines, "(No mechanisms listed.)")
+
     return "\n".join(lines)
 
 

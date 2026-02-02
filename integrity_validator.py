@@ -52,6 +52,7 @@ def validate_output(output: dict) -> bool:
     errors += _validate_report_pack_internal(output, evidence_ids)
     errors += validate_headline_body_delta(output, evidence_ids)
     errors += validate_evidence_density(output)
+    errors += validate_new_analysis_modules(output)
     errors += validate_counterevidence_status(output)
 
     if errors:
@@ -490,18 +491,34 @@ def validate_counterevidence_status(out: Dict[str, Any]) -> List[str]:
 # NEW ANALYSIS MODULE VALIDATOR
 # -----------------------------
 def validate_new_analysis_modules(out: Dict[str, Any]) -> List[str]:
+    """
+    Structural-only checks for new pillar sockets.
+    Uses literal keys for now to avoid schema_names drift.
+    (We can add K constants after this is stable.)
+    """
     errs: List[str] = []
 
-    article_layer = out.get(K.ARTICLE_LAYER, {})
-    if article_layer:
-        pia = article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)
-        if pia is not None and not isinstance(pia, dict):
-            errs.append("premise_independence_analysis must be an object")
+    # Optional new sockets (legacy schema may omit them)
+    article_layer = out.get("article_layer", None)
+    if article_layer is not None and not isinstance(article_layer, dict):
+        errs.append("article_layer must be an object if present")
+        return errs
 
-    facts_layer = out.get(K.FACTS_LAYER, {})
-    if facts_layer:
-        raa = facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)
+    if isinstance(article_layer, dict):
+        pia = article_layer.get("premise_independence_analysis", None)
+        if pia is not None and not isinstance(pia, dict):
+            errs.append("article_layer.premise_independence_analysis must be an object")
+
+    facts_layer = out.get(K.FACTS_LAYER, None)
+    if facts_layer is not None and not isinstance(facts_layer, dict):
+        errs.append("facts_layer must be an object")
+        return errs
+
+    if isinstance(facts_layer, dict):
+        raa = facts_layer.get("reality_alignment_analysis", None)
         if raa is not None and not isinstance(raa, dict):
-            errs.append("reality_alignment_analysis must be an object")
+            errs.append("facts_layer.reality_alignment_analysis must be an object")
 
     return errs
+
+

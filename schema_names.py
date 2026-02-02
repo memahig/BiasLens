@@ -1,7 +1,8 @@
+
 #!/usr/bin/env python3
 """
 FILE: schema_names.py
-VERSION: 0.2
+VERSION: 0.3
 LAST UPDATED: 2026-02-02
 PURPOSE: Central key registry for BiasLens JSON schema fields (string constants).
 
@@ -84,6 +85,21 @@ class K:
     EVIDENCE_DENSITY = "evidence_density"
     COUNTEREVIDENCE_STATUS = "counterevidence_status"
 
+    # --- evidence_density ---
+    NUM_CLAIMS = "num_claims"
+    NUM_HIGH_STAKES_CLAIMS = "num_high_stakes_claims"
+    NUM_EVIDENCE_ITEMS = "num_evidence_items"
+    EVIDENCE_TO_CLAIM_RATIO = "evidence_to_claim_ratio"
+    EVIDENCE_TO_HIGH_STAKES_CLAIM_RATIO = "evidence_to_high_stakes_claim_ratio"
+    DENSITY_LABEL = "density_label"
+    NOTE = "note"
+
+    # --- counterevidence_status ---
+    REQUIRED = "required"
+    STATUS = "status"
+    SEARCH_SCOPE = "search_scope"
+    RESULT = "result"
+
     # --- declared_limits ---
     LIMIT_ID = "limit_id"
     STATEMENT = "statement"
@@ -123,4 +139,5 @@ class K:
     MAINTENANCE_NOTES = "maintenance_notes"
     GATING_FLAGS = "gating_flags"
 
+    # presentation_integrity fields
     MODULE_STATUS = "status"

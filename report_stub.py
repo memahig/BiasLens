@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 FILE: report_stub.py
-VERSION: 0.8
-LAST UPDATED: 2026-02-01
+VERSION: 1.0
+LAST UPDATED: 2026-02-02
 PURPOSE:
 BiasLens MVP builder that produces schema-legal, fail-closed-friendly output.
 
@@ -13,7 +13,12 @@ Contract alignment (based on your actual codebase):
   and requires metrics.evidence_density (with correct evidence_to_claim_ratio).
 - enforcers.integrity_objects.enforce_integrity_objects() requires:
     facts_layer.fact_table_integrity to be a valid integrity object.
-- enforcers.facts_star_policy caps fact_table_integrity.stars based on verdict distribution.
+    article_layer.article_integrity to be a valid integrity object.
+- enforcers.article_enforcer.enforce_article_layer() requires:
+    if article_layer present -> article_layer.presentation_integrity.status in {"run","not_run"}
+- NEW REQUIRED PILLARS (enforcer):
+    article_layer.premise_independence_analysis must exist (Reasoning Integrity pillar)
+    facts_layer.reality_alignment_analysis must exist (Reality Alignment pillar)
 
 MVP safety guarantees:
 - No hallucinations: facts/claims are derived verbatim from input text.
@@ -60,9 +65,15 @@ def _safe_confidence(conf: str) -> str:
 # -----------------------------
 # Integrity object factory (must match enforcers/integrity_objects.py)
 # -----------------------------
-def _integrity_object(*, stars: int, confidence: str, rationale_bullets: List[str], how_to_improve: List[str],
-                      gating_flags: Optional[List[str]] = None,
-                      maintenance_notes: Optional[List[str]] = None) -> Dict[str, Any]:
+def _integrity_object(
+    *,
+    stars: int,
+    confidence: str,
+    rationale_bullets: List[str],
+    how_to_improve: List[str],
+    gating_flags: Optional[List[str]] = None,
+    maintenance_notes: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     if stars not in STAR_MAP:
         stars = 3
 
@@ -82,8 +93,8 @@ def _integrity_object(*, stars: int, confidence: str, rationale_bullets: List[st
     # - how_to_improve non-empty for stars <= 4
     if stars <= 4 and len(how) == 0:
         how = [
-            "Add independent fact-checking for checkable facts; set verdicts true/false with sourced evidence.",
-            "Reduce unknown verdicts by expanding verification scope and retrieval.",
+            "Add independent verification and evidence for high-impact claims.",
+            "Reduce unknown/uncertain states by expanding retrieval scope and checks.",
         ]
 
     return {
@@ -101,8 +112,13 @@ def _integrity_object(*, stars: int, confidence: str, rationale_bullets: List[st
 # -----------------------------
 # Evidence / Facts / Claims builders (MVP)
 # -----------------------------
-def _build_evidence_bank(*, text: str, source_title: Optional[str], source_url: Optional[str],
-                         max_items: int = 40) -> List[Dict[str, Any]]:
+def _build_evidence_bank(
+    *,
+    text: str,
+    source_title: Optional[str],
+    source_url: Optional[str],
+    max_items: int = 40,
+) -> List[Dict[str, Any]]:
     t = (text or "").strip()
     if not t:
         return []
@@ -141,7 +157,6 @@ def _build_evidence_bank(*, text: str, source_title: Optional[str], source_url: 
                 K.QUOTE: s,
                 K.START_CHAR: int(start),
                 K.END_CHAR: int(end),
-                # optional fields accepted by validator:
                 K.SOURCE: {
                     K.TYPE: "text",
                     K.TITLE: _s(source_title),
@@ -169,10 +184,10 @@ def _extract_facts_from_evidence(evidence_bank: List[Dict[str, Any]], *, max_fac
         facts.append(
             {
                 K.FACT_ID: f"F{fid_n}",
-                K.FACT_TEXT: quote,                 # verbatim
+                K.FACT_TEXT: quote,
                 K.CHECKABILITY: "checkable",
-                K.VERDICT: "unknown",               # MVP: no independent verification
-                K.EVIDENCE_EIDS: [eid],             # present => must reference valid EIDs
+                K.VERDICT: "unknown",
+                K.EVIDENCE_EIDS: [eid],
                 K.NOTES: "MVP: verbatim sentence-fact; not independently verified.",
             }
         )
@@ -196,7 +211,7 @@ def _build_claims_from_evidence(evidence_bank: List[Dict[str, Any]], *, max_clai
         claims.append(
             {
                 K.CLAIM_ID: f"C{cid_n}",
-                K.CLAIM_TEXT: quote,                # verbatim stated-passage claim
+                K.CLAIM_TEXT: quote,
                 K.STAKES: "low",
                 K.EVIDENCE_EIDS: [eid],
             }
@@ -208,14 +223,16 @@ def _build_claims_from_evidence(evidence_bank: List[Dict[str, Any]], *, max_clai
 # -----------------------------
 # Public builder
 # -----------------------------
-def analyze_text_to_report_pack(*, text: str, source_title: Optional[str] = None,
-                                source_url: Optional[str] = None) -> Dict[str, Any]:
-    # Build evidence/facts/claims
+def analyze_text_to_report_pack(
+    *,
+    text: str,
+    source_title: Optional[str] = None,
+    source_url: Optional[str] = None,
+) -> Dict[str, Any]:
     evidence_bank = _build_evidence_bank(text=text, source_title=source_title, source_url=source_url, max_items=40)
     facts = _extract_facts_from_evidence(evidence_bank, max_facts=40)
     claims = _build_claims_from_evidence(evidence_bank, max_claims=25)
 
-    # Fact table integrity: propose 3, then clamp to policy (prevents cap failures)
     proposed_stars = 3
     final_stars, max_star = clamp_fact_table_stars(stars=proposed_stars, facts=facts)
 
@@ -233,31 +250,68 @@ def analyze_text_to_report_pack(*, text: str, source_title: Optional[str] = None
         gating_flags=["mvp:no_independent_fact_check", "policy:fact_table_star_cap"],
     )
 
-    # Required metrics.evidence_density (validator checks ratio correctness)
+    # REQUIRED PILLAR: Reality Alignment analysis (placeholder; not_run)
+    reality_alignment_analysis = {
+        "status": "not_run",
+        "notes": [
+            "Required pillar socket present. MVP does not yet perform independent fact-checking/retrieval.",
+            "When implemented, this module will independently verify checkable facts against external sources (not just quoted actors).",
+        ],
+    }
+
+    # Article integrity (required by current integrity_objects enforcer)
+    article_integrity = _integrity_object(
+        stars=2,
+        confidence="low",
+        rationale_bullets=[
+            "MVP: no independent verification or argument evaluation performed; article-level integrity is conservative by default.",
+            "This rating is a placeholder integrity object required by the current enforcer contract.",
+        ],
+        how_to_improve=[
+            "Run Fact Layer verification (reality alignment) and update verdict distributions.",
+            "Evaluate claim-level support, premise dependence, and argument structure before raising this rating.",
+        ],
+        gating_flags=["mvp:article_integrity_placeholder"],
+    )
+
+    # Presentation integrity socket (article_enforcer requires status if article_layer exists)
+    presentation_integrity = {K.MODULE_STATUS: "not_run"}
+
+    # REQUIRED PILLAR: Premise Independence / Reasoning Integrity (placeholder; not_run)
+    premise_independence_analysis = {
+        "status": "not_run",
+        "notes": [
+            "Required pillar socket present. MVP does not yet compute premise dependence / premise-independence.",
+            "When implemented, this module will identify claims whose support depends on accepting contested premises (and report that at Scholar level; Reader level when it changes meaning).",
+        ],
+    }
+
     num_claims = len(claims)
     num_evidence_items = len(evidence_bank)
     evidence_to_claim_ratio = num_evidence_items / max(1, num_claims)
 
     out: Dict[str, Any] = {
         K.SCHEMA_VERSION: "1.0",
-        K.RUN_METADATA: {
-            K.MODE: "mvp",
-            K.SOURCE_TYPE: "text",
-        },
+        K.RUN_METADATA: {K.MODE: "mvp", K.SOURCE_TYPE: "text"},
         K.EVIDENCE_BANK: evidence_bank,
         K.FACTS_LAYER: {
             K.FACTS: facts,
             K.FACT_TABLE_INTEGRITY: fact_table_integrity,
+            # new required pillar socket
+            "reality_alignment_analysis": reality_alignment_analysis,
         },
-        K.CLAIM_REGISTRY: {
-            K.CLAIMS: claims,
+        K.CLAIM_REGISTRY: {K.CLAIMS: claims},
+        K.ARTICLE_LAYER: {
+            K.ARTICLE_INTEGRITY: article_integrity,
+            K.PRESENTATION_INTEGRITY: presentation_integrity,
+            # new required pillar socket
+            "premise_independence_analysis": premise_independence_analysis,
         },
         K.METRICS: {
             K.EVIDENCE_DENSITY: {
                 K.NUM_CLAIMS: num_claims,
                 K.NUM_EVIDENCE_ITEMS: num_evidence_items,
                 K.EVIDENCE_TO_CLAIM_RATIO: evidence_to_claim_ratio,
-                # Optional fields (allowed; validator ignores them if present)
                 K.DENSITY_LABEL: "mvp",
                 K.NOTE: "MVP density is computed from verbatim stated-passage claims and evidence items.",
             }
@@ -281,11 +335,7 @@ def analyze_text_to_report_pack(*, text: str, source_title: Optional[str] = None
                 "Reader guide (MVP): This output is quote-tethered and conservative: it shows what was said (verbatim) but does not "
                 "yet verify accuracy. Treat it as an evidence index and a checklist for what to verify next, not as a fact-check."
             ),
-            K.FINDINGS_PACK: {
-                # Validator allows empty list; keep MVP minimal and schema-legal.
-                "items": []
-            },
-            # Optional scholar_pack omitted in MVP
+            K.FINDINGS_PACK: {"items": []},
         },
     }
 
