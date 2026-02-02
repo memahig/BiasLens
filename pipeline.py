@@ -21,7 +21,12 @@ import sys
 from typing import Optional
 
 from io_sources import resolve_input_text
+
+# LOCK: This is the ONLY authorized report builder.
+# All BiasLens outputs MUST originate from analyze_text_to_report_pack().
+# Do not introduce alternate builders without validator + schema review.
 from report_stub import dummy_report_pack, analyze_text_to_report_pack
+
 from integrity_validator import validate_output, ValidationError
 
 
@@ -46,13 +51,25 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     # Determine input text
     try:
-        text, source_title, source_url = resolve_input_text(args.url, args.file, args.text)
+        text, source_title, source_url = resolve_input_text(
+            args.url, args.file, args.text
+        )
     except RuntimeError as e:
         print("❌ Input failed:")
         print(str(e))
         return 2
 
-    report = analyze_text_to_report_pack(text=text, source_title=source_title, source_url=source_url)
+    # 🔒 Authorized builder boundary
+    report = analyze_text_to_report_pack(
+        text=text,
+        source_title=source_title,
+        source_url=source_url,
+    )
+
+    if not isinstance(report, dict):
+        raise RuntimeError(
+            "Builder violation: report must be a dict matching schema."
+        )
 
     # Fail-closed validation
     try:
@@ -62,14 +79,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(e))
         return 3
 
-    if args.json:
-        print(json.dumps(report, indent=2, ensure_ascii=False))
-    else:
-        print("✅ BiasLens run PASSED validator.\n")
-        print(report["report_pack"]["summary_one_paragraph"])
-        print("\nTip: re-run with --json to see the full structured output.")
+    print("✅ BiasLens run PASSED validator.\n")
+    print(report["report_pack"]["summary_one_paragraph"])
+    print("\nTip: re-run with --json to see the full structured output.")
 
     return 0
+
 
 
 if __name__ == "__main__":
