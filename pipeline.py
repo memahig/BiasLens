@@ -17,6 +17,12 @@ from io_sources import resolve_input_text
 # LOCK: This is the ONLY authorized report builder.
 from builders.report_builder import build_report
 
+# 🔒 Architecture lock — build_report must remain the single entrypoint.
+# If someone swaps the import or rebinds build_report, fail fast.
+_AUTH_BUILDER_NAME = "build_report"
+if build_report.__name__ != _AUTH_BUILDER_NAME:
+    raise RuntimeError("Architecture violation: build_report has been replaced/aliased.")
+
 from integrity_validator import validate_output, ValidationError
 
 
