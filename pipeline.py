@@ -1,16 +1,7 @@
-
 #!/usr/bin/env python3
 """
 FILE: pipeline.py
-VERSION: 0.1
-LAST UPDATED: 2026-01-31
 PURPOSE: Local BiasLens runner — resolves input → builds report pack → validates fail-closed.
-
-Supports:
-  - python3 pipeline.py                       (runs integrity self-test / dummy pack)
-  - python3 pipeline.py --url "https://..."   (scrape article text then run)
-  - python3 pipeline.py --text "..."          (analyze provided text)
-  - python3 pipeline.py --file path.txt       (analyze text file)
 """
 
 from __future__ import annotations
@@ -23,11 +14,13 @@ from typing import Optional
 from io_sources import resolve_input_text
 
 # LOCK: This is the ONLY authorized report builder.
-# All BiasLens outputs MUST originate from analyze_text_to_report_pack().
-# Do not introduce alternate builders without validator + schema review.
 from report_stub import dummy_report_pack, analyze_text_to_report_pack
 
 from integrity_validator import validate_output, ValidationError
+
+
+# 🔒 Architecture lock — object reference (NOT a string)
+AUTHORIZED_BUILDER = analyze_text_to_report_pack
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -66,10 +59,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         source_url=source_url,
     )
 
+    # 🔒 Builder identity lock
+    if analyze_text_to_report_pack is not AUTHORIZED_BUILDER:
+        raise RuntimeError("Architecture violation: unauthorized builder detected.")
+
     if not isinstance(report, dict):
-        raise RuntimeError(
-            "Builder violation: report must be a dict matching schema."
-        )
+        raise RuntimeError("Builder violation: report must be a dict matching schema.")
 
     # Fail-closed validation
     try:
@@ -79,12 +74,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(e))
         return 3
 
-    print("✅ BiasLens run PASSED validator.\n")
-    print(report["report_pack"]["summary_one_paragraph"])
-    print("\nTip: re-run with --json to see the full structured output.")
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print("✅ BiasLens run PASSED validator.\n")
+        print(report["report_pack"]["summary_one_paragraph"])
+        print("\nTip: re-run with --json to see the full structured output.")
 
     return 0
-
 
 
 if __name__ == "__main__":
