@@ -80,6 +80,11 @@ class K:
     # --- headline_body_delta ---
     PRESENT = "present"
     ITEMS = "items"
+    HEADLINE_TEXT = "headline_text"
+    BODY_TEXT = "body_text"
+    SOURCE_ID = "source_id"
+    QUOTE_VERBATIM = "quote_verbatim"
+
 
     # --- metrics ---
     EVIDENCE_DENSITY = "evidence_density"
