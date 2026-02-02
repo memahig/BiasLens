@@ -2,7 +2,7 @@
 
 🛡️ BIASLENS — EPISTEMIC AUDIT SYSTEM
 MANIFESTO / MEMORY ANCHOR
-Last locked: 2026-01-21
+Last locked: 2026-02-02
 
 This document is the authoritative design constitution for BiasLens.
 All code, prompts, schemas, and AI behavior MUST conform to this file.
@@ -23,6 +23,7 @@ It audits:
 • contextual completeness
 • proportionality of language
 • influence and framing risks
+• reality alignment
 
 BiasLens does NOT:
 • infer intent
@@ -30,11 +31,94 @@ BiasLens does NOT:
 • label authors
 • generate unsupported claims
 • issue uncited findings
+• adjudicate belief systems
+• declare metaphysical truth
 
 All severity is framed ONLY as:
 → “Information Integrity Concern”
 
 Never “quality,” “score,” or “grade.”
+
+────────────────────────────────
+THREE EPISTEMIC PILLARS (NON-NEGOTIABLE)
+────────────────────────────────
+
+BiasLens is built on three load-bearing pillars:
+
+🔒 Evidence Discipline  
+No finding without evidence.
+
+🔒 Reasoning Integrity  
+Arguments are evaluated for structural soundness, including detection of premise-dependent reasoning.
+
+🔒 Reality Alignment  
+Claims are evaluated against independently verifiable external evidence when such evidence is available.
+
+No pillar may be weakened without constituting a system regression.
+
+────────────────────────────────
+EPISTEMIC STABILITY DOCTRINE
+────────────────────────────────
+
+BiasLens evaluates the epistemic stability of claims based on the strength and convergence of independent evidence.
+
+Some claims achieve foundational stability due to overwhelming, replicated, and convergent evidence.
+
+Other claims remain provisional, contested, interpretive, or currently unresolvable.
+
+BiasLens does not present knowledge as binary when reality is graduated.
+
+Calibrated confidence is mandatory.
+
+Artificial skepticism is forbidden.
+Artificial certainty is forbidden.
+
+────────────────────────────────
+AUTHORITY AND CONSENSUS
+────────────────────────────────
+
+Authority, tradition, consensus, and textual origin are modeled as epistemic signals — not proof.
+
+Consensus is treated as a verifiable social fact while remaining distinct from empirical validation.
+
+BiasLens distinguishes between:
+
+• what a text states  
+• how it is interpreted  
+• how widely interpretations are shared  
+• whether claims are supported by external evidence  
+
+Alignment between these layers increases epistemic confidence.  
+Divergence is treated as analytically significant.
+
+Authority is never self-validating.
+
+────────────────────────────────
+PREMISE INDEPENDENCE INVARIANT
+────────────────────────────────
+
+BiasLens evaluates whether conclusions rely on independently verifiable premises or on premises that must be accepted for the conclusion to hold.
+
+Premise-dependent reasoning structures — including circular validation and self-authenticating authority — must be detected and surfaced at the argument level.
+
+BiasLens maps reasoning structure.  
+It does not attack belief.
+
+Civilizational axioms, normative frameworks, and interpretive traditions are not treated as reasoning defects, but their epistemic role must remain visible.
+
+────────────────────────────────
+CLAIM DOMAIN DISTINCTION
+────────────────────────────────
+
+BiasLens explicitly distinguishes between:
+
+• Empirical claims — testable against external reality  
+• Interpretive claims — derived from texts or analytical frameworks  
+• Normative claims — value-based or philosophical  
+
+These domains require different epistemic handling and must never be conflated.
+
+Category errors constitute system failure.
 
 ────────────────────────────────
 ARCHITECTURAL LOCK
@@ -56,7 +140,7 @@ Outputs:
 
 evidence_bank[] = {
   eid,
-  quote,                // verbatim article text
+  quote,
   start_char,
   end_char,
   why_relevant
@@ -98,17 +182,15 @@ FINDING TYPES (LOCKED TAXONOMY)
 
 BiasLens audits the following categories only:
 
-1. Core Truthfulness
-2. Evidence & Attribution Discipline
-3. Systematic Omission
-   → framed ONLY as “absence of expected context”
-4. Context & Proportionality
-   (internal name: Contextual Proportionality)
-5. Reality-Anchored Language Evaluation
-   (public-facing name)
-6. Logical Structure & Argument Quality
-7. Influence / Framing Signals
-8. Internal Consistency
+1. Core Truthfulness  
+2. Evidence & Attribution Discipline  
+3. Systematic Omission  
+   → framed ONLY as “absence of expected context”  
+4. Context & Proportionality  
+5. Reality-Anchored Language Evaluation  
+6. Logical Structure & Argument Quality  
+7. Influence / Framing Signals  
+8. Internal Consistency  
 
 Omission is NEVER framed as intent, motive, or deception.
 
@@ -118,15 +200,15 @@ EVIDENCE ENFORCEMENT
 
 Every analytic object must include:
 
-• evidence_eids[]
-• optional evidence_quote
-• optional evidence_location
+• evidence_eids[]  
+• optional evidence_quote  
+• optional evidence_location  
 
 Forbidden:
-• free-floating claims
-• uncited logic findings
-• uncited summaries
-• analyst intuition
+• free-floating claims  
+• uncited logic findings  
+• uncited summaries  
+• analyst intuition  
 
 “No finding without evidence” is the highest system law.
 
@@ -138,118 +220,33 @@ BiasLens always generates ONE structured audit dataset.
 
 It is rendered into TWO reports.
 
-────────────
-OVERVIEW REPORT (Public)
-────────────
+OVERVIEW → fast epistemic scan  
+IN-DEPTH → forensic audit  
 
-Purpose:
-Fast epistemic risk scan.
-
-Contains:
-• Overall Information Integrity concern profile
-• Highest-risk findings only
-• Short evidence-backed explanations
-• No deep logic maps
-
-Think:
-“nutrition label + executive summary”
-
-────────────
-IN-DEPTH REPORT (Expert)
-────────────
-
-Purpose:
-Forensic epistemic audit.
-
-Adds:
-
-ARGUMENT MAP
-argument_map[] = {
-  conclusion,
-  premises[],
-  assumptions[],
-  counterpoints_missing[],
-  evidence_eids[]
-}
-
-LOGIC AUDITS
-logic_audits[] = {
-  pattern,
-  mechanism,
-  risk,
-  concern,
-  evidence_eids[]
-}
-
-Includes:
-• full findings
-• full evidence links
-• instance-level logic audits
-• validation notes
-
-Think:
-“inspectable epistemic model”
-
-────────────────────────────────
-GENERAL SUMMARY RULE
-────────────────────────────────
-
-The General Summary is NOT free-form.
-
-It is mechanically generated from:
-• highest-concern findings
-• argument map conclusions
-• repeated risk patterns
-• validator output
-
-Rule:
-The summary may ONLY restate supported findings.
-No new claims. No new analysis.
-
-────────────────────────────────
-SEVERITY SCALE (LOCKED)
-────────────────────────────────
-
-🟢 Low concern  
-🟡 Moderate concern  
-🟠 Elevated concern  
-🔴 High concern  
-
-Scale always means:
-→ “Information Integrity Concern Level”
-
-Never quality, reliability, or intent.
-
-────────────────────────────────
-DESIGN PHILOSOPHY
-────────────────────────────────
-
-BiasLens is designed to transition from:
-
-“LLM writes a bias report”
-
-to:
-
-“System builds an evidence-indexed epistemic model and renders views.”
-
-The model proposes.
-The system constrains.
+The model proposes.  
+The system constrains.  
 The evidence governs.
 
-BiasLens is an information integrity instrument, not a commentator.
+BiasLens is an information integrity instrument — not a commentator.
 
 ────────────────────────────────
 DEVELOPER WARNING
 ────────────────────────────────
 
 Any code or prompt that:
-• skips Pass A
-• allows uncited findings
-• collapses reports into one view
-• infers intent
-• weakens omission handling
-• removes evidence IDs
+
+• skips Pass A  
+• allows uncited findings  
+• collapses reports into one view  
+• infers intent  
+• weakens omission handling  
+• removes evidence IDs  
+• blurs claim domains  
+• treats authority as proof  
+• suppresses premise dependence  
+• overstates certainty  
 
 is a SYSTEM REGRESSION.
 
 This file overrides all other instructions.
+

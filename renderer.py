@@ -21,6 +21,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+from rating_style import render_rating
+
+
 
 # ─────────────────────────────────────────────────────────────
 # small helpers
@@ -57,16 +60,12 @@ def _title_url_from_stub(pack: Dict[str, Any]) -> Tuple[str, str]:
 def _title_url_from_brick7(pack: Dict[str, Any]) -> Tuple[str, str]:
     return _s(pack.get("source_title")) or "BiasLens Report", _s(pack.get("source_url"))
 
-def _severity_rank(sev: str) -> int:
-    # supports your stub "🟢" style; also handles words
-    sev = _s(sev)
-    if "🔴" in sev or sev.lower() == "high":
-        return 4
-    if "🟠" in sev or sev.lower() == "elevated":
-        return 3
-    if "🟡" in sev or sev.lower() == "moderate":
-        return 2
-    return 1
+def _rating_rank(rating) -> int:
+    try:
+        r = int(rating)
+    except Exception:
+        r = 3
+    return max(1, min(5, r))
 
 def _evidence_lookup(pack: Dict[str, Any]) -> Dict[str, str]:
     lookup: Dict[str, str] = {}
@@ -102,7 +101,7 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
 
     # Take top findings (if any)
     top = items[:]
-    top.sort(key=lambda x: _severity_rank(_d(x).get("severity")), reverse=True)
+    top.sort(key=lambda x: _rating_rank(_d(x).get("rating")), reverse=True)
     top = top[:5]
 
     limits = _l(pack.get("declared_limits"))
@@ -119,7 +118,7 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     if top:
         for it in top:
             itd = _d(it)
-            sev = _s(itd.get("severity")) or "🟢"
+            rating = itd.get("rating", 3)
             claim_id = _s(itd.get("claim_id"))
             txt = _s(itd.get("finding_text"))
             eids = _l(itd.get("evidence_eids"))
@@ -129,7 +128,7 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
                 q = evidence.get(_s(eids[0]), "")
                 if q:
                     quote = _clip(q, 180)
-            lines.append(f"- {sev} **{claim_id or 'Claim'}** — {txt}")
+            lines.append(f"- {render_rating(rating)} **{claim_id or 'Claim'}** — {txt}")
             if eid_str:
                 lines.append(f"  - evidence: `{eid_str}`")
             if quote:
@@ -285,9 +284,9 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
             claim_id = _s(itd.get("claim_id"))
             rest = _clip(_s(itd.get("restated_claim")), 240)
             txt = _s(itd.get("finding_text"))
-            sev = _s(itd.get("severity")) or "🟢"
+            rating = itd.get("rating", 3)
             eids = itd.get("evidence_eids", [])
-            lines.append(f"- {sev} **{claim_id}**: {rest}")
+            lines.append(f"- {render_rating(rating)} **{claim_id}**: {rest}")
             lines.append(f"  - finding: {txt}")
             lines.append(f"  - evidence_eids: {eids}")
     else:

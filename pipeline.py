@@ -1,6 +1,10 @@
+
 #!/usr/bin/env python3
 """
-BiasLens Pipeline (local runner)
+FILE: pipeline.py
+VERSION: 0.1
+LAST UPDATED: 2026-01-31
+PURPOSE: Local BiasLens runner — resolves input → builds report pack → validates fail-closed.
 
 Supports:
   - python3 pipeline.py                       (runs integrity self-test / dummy pack)
@@ -18,7 +22,7 @@ from typing import Optional
 
 from io_sources import resolve_input_text
 from report_stub import dummy_report_pack, analyze_text_to_report_pack
-from validator import validate_output, ValidationError
+from integrity_validator import validate_output, ValidationError
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
