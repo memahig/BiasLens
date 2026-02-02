@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 FILE: pipeline.py
@@ -14,10 +15,10 @@ from typing import Optional
 from io_sources import resolve_input_text
 
 # LOCK: This is the ONLY authorized report builder.
-from report_stub import dummy_report_pack
 from builders.report_builder import build_report
 
 from integrity_validator import validate_output, ValidationError
+
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -31,9 +32,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv or sys.argv[1:])
 
-    # Default behavior: integrity test
+    # ✅ Integrity self-test (goes through builder, not a dummy emitter)
     if not args.url and not args.text and not args.file:
-        report = dummy_report_pack()
+        report = build_report(
+            text="Integrity self-test.",
+            source_title="self_test",
+            source_url="",
+        )
         validate_output(report)
         print("✅ BiasLens integrity gate PASSED.")
         return 0
@@ -48,7 +53,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(e))
         return 2
 
-     # 🔒 Authorized builder boundary
+    # 🔒 Authorized builder boundary
     report = build_report(
         text=text,
         source_title=source_title,
@@ -58,7 +63,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not isinstance(report, dict):
         raise RuntimeError("Builder violation: report must be a dict matching schema.")
 
-   # Fail-closed validation
+    # Fail-closed validation
     try:
         validate_output(report)
     except ValidationError as e:
