@@ -300,7 +300,7 @@ def analyze_text_to_report_pack(
     evidence_to_claim_ratio = num_evidence_items / max(1, num_claims)
 
     out: Dict[str, Any] = {
-        K.SCHEMA_VERSION: "1.0.0",
+        K.SCHEMA_VERSION: K.SCHEMA_VERSION_CURRENT,
         K.RUN_METADATA: {K.MODE: "mvp", K.SOURCE_TYPE: "text"},
         K.EVIDENCE_BANK: evidence_bank,
         K.FACTS_LAYER: {
