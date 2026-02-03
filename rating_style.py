@@ -9,7 +9,7 @@ from typing import Dict, Optional
 # PURPOSE:
 # - Render user-facing rating tokens consistently:
 #     dot + stars  (and optionally meaning)
-# - Provide OPTIONAL internal 0–100 scoring → stars mapping.
+# - Provide internal 0–100 scoring ↔ stars mapping.
 #
 # LOCKED SEMANTICS (user-facing):
 #   1★ = 🔴 Severe integrity failures
@@ -17,6 +17,13 @@ from typing import Dict, Optional
 #   3★ = 🟡 Mixed / variable
 #   4★ = 🟢 Strong
 #   5★ = 🔵 Exceptional
+#
+# SCORE→STARS BANDS (internal, locked for now):
+#   0–19   -> 1★
+#   20–39  -> 2★
+#   40–59  -> 3★
+#   60–79  -> 4★
+#   80–100 -> 5★
 # ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -39,17 +46,10 @@ class RatingStyle:
             object.__setattr__(
                 self,
                 "circle_map",
-                {
-                    1: "🔴",
-                    2: "🟠",
-                    3: "🟡",
-                    4: "🟢",
-                    5: "🔵",
-                },
+                {1: "🔴", 2: "🟠", 3: "🟡", 4: "🟢", 5: "🔵"},
             )
 
         if self.meaning_map is None:
-            # These strings are LOCKED by your requirement.
             object.__setattr__(
                 self,
                 "meaning_map",
@@ -78,23 +78,25 @@ def clamp_rating(r: int) -> int:
     return max(1, min(5, rr))
 
 
-def score_to_stars(score_0_100: float) -> int:
-    """
-    OPTIONAL internal mapping (engine-facing).
-    You can tune these cutoffs later without changing the UI contract.
-
-    Default bands:
-      0–19  -> 1★
-      20–39 -> 2★
-      40–59 -> 3★
-      60–79 -> 4★
-      80–100-> 5★
-    """
+def clamp_score(score_0_100: int) -> int:
     try:
-        s = float(score_0_100)
+        s = int(score_0_100)
     except Exception:
-        return 3
+        s = 50
+    return max(0, min(100, s))
 
+
+def score_to_stars(score_0_100: int) -> int:
+    """
+    Internal mapping (engine-facing). Bands are currently locked.
+
+      0–19   -> 1★
+      20–39  -> 2★
+      40–59  -> 3★
+      60–79  -> 4★
+      80–100 -> 5★
+    """
+    s = clamp_score(score_0_100)
     if s < 20:
         return 1
     if s < 40:
@@ -108,12 +110,16 @@ def score_to_stars(score_0_100: float) -> int:
 
 def stars_to_score_midpoint(stars: int) -> int:
     """
-    OPTIONAL helper for MVP / bridging:
-    If you currently only have stars, but want a stable "score_0_100" placeholder,
-    use a midpoint so it doesn't jump around.
+    Stable midpoint score for a given star band.
+    Ensures score_to_stars(midpoint) == stars.
     """
-    s = clamp_rating(stars)
-    return {1: 10, 2: 30, 3: 50, 4: 70, 5: 90}[s]
+    st = clamp_rating(stars)
+    return {1: 10, 2: 30, 3: 50, 4: 70, 5: 90}[st]
+
+
+def stars_to_score_range(stars: int) -> tuple[int, int]:
+    st = clamp_rating(stars)
+    return {1: (0, 19), 2: (20, 39), 3: (40, 59), 4: (60, 79), 5: (80, 100)}[st]
 
 
 def render_rating(
