@@ -149,5 +149,16 @@ class K:
     MAINTENANCE_NOTES = "maintenance_notes"
     GATING_FLAGS = "gating_flags"
 
+    # --- claim evaluation module (Pass B) ---
+    CLAIM_EVALUATION_MODULE = "claim_evaluation_module"
+    CLAIM_EVALUATION_STATUS = "status"  # reuse K.STATUS if you prefer; keeping explicit ok
+    CLAIM_EVALUATION_ITEMS = "items"
+    CLAIM_EVAL_ID = "claim_eval_id"
+    CLAIM_REF = "claim_ref"
+    ISSUE_TYPE = "issue_type"
+    SEVERITY = "severity"
+    EXPLANATION = "explanation"
+    SUPPORT_CLASS = "support_class"
+
     # presentation_integrity fields
     MODULE_STATUS = "status"

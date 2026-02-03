@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """
 FILE: builders/pass_b.py
@@ -11,22 +13,26 @@ ARCHITECTURE LOCK:
 Current behavior:
 - Adds optional internal numeric scoring (score_0_100) to integrity objects
   WITHOUT changing stars (uses star-band midpoint to preserve consistency).
+- Runs Claim Evaluation Engine and attaches output under claim_registry.claim_evaluations.
+- NEW: Builds claim_registry.claim_integrity from claim_evaluations.score_0_100 (stars derived).
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from schema_names import K
-from rating_style import stars_to_score_midpoint
+from rating_style import score_to_stars, stars_to_score_midpoint
+from modules.claims.claim_evaluator import run_claim_evaluator
 
+# Single optional field name (allowed by integrity_objects)
 _SCORE_KEY = "score_0_100"
 
 
 def _ensure_score_midpoint(integ: Dict[str, Any]) -> None:
     """
     If score_0_100 is missing, set it to a stable midpoint for the current stars.
-    Does NOT change stars/label/color (Pass A remains source of public rating).
+    Does NOT change stars/label/color.
     """
     if not isinstance(integ, dict):
         return
@@ -38,12 +44,63 @@ def _ensure_score_midpoint(integ: Dict[str, Any]) -> None:
     integ[_SCORE_KEY] = stars_to_score_midpoint(stars)
 
 
+def _build_claim_integrity(*, claim_eval: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build a schema-legal integrity object for claim-level integrity.
+
+    Notes:
+    - Deterministic
+    - Uses score_0_100 -> stars mapping
+    - Does NOT claim truth; this is structural-risk scoring only (text signals).
+    """
+    score = claim_eval.get(_SCORE_KEY, 50)
+    try:
+        score_int = int(score)
+    except Exception:
+        score_int = 50
+    score_int = max(0, min(100, score_int))
+
+    stars = score_to_stars(score_int)
+
+    # Import here to avoid circular import hazards at module load time
+    from enforcers.integrity_objects import STAR_MAP  # locked semantics
+
+    label, color = STAR_MAP[stars]
+
+    items = claim_eval.get(K.ITEMS, [])
+    n_items = len(items) if isinstance(items, list) else 0
+
+    rationale: List[str] = [
+        "Claim Integrity is computed from deterministic structural signals in Pass B (text-only), not truth verification.",
+        f"Claim Evaluation Engine emitted {n_items} issue item(s); score_0_100 summarizes severity-weighted structure risk.",
+    ]
+
+    how: List[str] = [
+        "Add disambiguating nouns/names when using pronouns (they/it/this).",
+        "Avoid absolute terms (always/never) unless you provide strong evidence and scope limits.",
+        "When asserting causality, include mechanism + evidence and consider alternative explanations.",
+        "Treat motive/intent language as a hypothesis; add direct supporting evidence or rephrase as uncertainty.",
+    ]
+
+    return {
+        K.STARS: stars,
+        K.LABEL: label,
+        K.COLOR: color,
+        K.CONFIDENCE: "low",  # MVP: text-signal engine; later can rise with retrieval/verification
+        K.RATIONALE_BULLETS: rationale,
+        K.HOW_TO_IMPROVE: how if stars <= 4 else ["Maintain: keep claims specific, qualified, and evidence-tethered."],
+        K.GATING_FLAGS: [],
+        _SCORE_KEY: score_int,
+    }
+
+
 def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(pass_a_out, dict):
         raise RuntimeError("Pass B contract violation: input must be a dict.")
 
     out = pass_a_out
 
+    # 1) Attach midpoint scores to existing integrity objects (stable behavior)
     facts_layer = out.get(K.FACTS_LAYER)
     if isinstance(facts_layer, dict):
         integ = facts_layer.get(K.FACT_TABLE_INTEGRITY)
@@ -55,5 +112,15 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         integ = article_layer.get(K.ARTICLE_INTEGRITY)
         if isinstance(integ, dict):
             _ensure_score_midpoint(integ)
+
+    # 2) Run Claim Evaluation Engine and attach under claim_registry.claim_evaluations
+    claim_module = run_claim_evaluator(out)
+
+    cr = out.get(K.CLAIM_REGISTRY)
+    if isinstance(cr, dict):
+        cr[K.CLAIM_EVALUATIONS] = claim_module
+
+        # 3) NEW: Claim Integrity object derived from claim_evaluations.score_0_100
+        cr[K.CLAIM_INTEGRITY] = _build_claim_integrity(claim_eval=claim_module)
 
     return out

@@ -1,8 +1,10 @@
+
+
 #!/usr/bin/env python3
 """
 FILE: renderer.py
-VERSION: 0.3
-LAST UPDATED: 2026-02-02
+VERSION: 0.4
+LAST UPDATED: 2026-02-03
 PURPOSE:
 Renders BiasLens output into readable Markdown for Streamlit.
 
@@ -25,7 +27,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Tuple
 
-from rating_style import render_rating
+from rating_style import render_rating, score_to_stars
 from schema_names import K
 
 
@@ -124,6 +126,22 @@ def _format_status(st: str) -> str:
     if st == "run":
         return "✅ run"
     return "⏳ not_run"
+
+
+def _count_by_key(items: List[Dict[str, Any]], key: str) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        v = _s(it.get(key)) or "(missing)"
+        counts[v] = counts.get(v, 0) + 1
+    return counts
+
+
+def _fmt_counts(counts: Dict[str, int]) -> str:
+    # stable order: descending count, then key
+    parts = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join([f"{k}={v}" for k, v in parts]) if parts else "(none)"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -273,8 +291,6 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("## What BiasLens can and cannot conclude from this run")
 
-    # Decision 2: Reader mentions pillars only if significant to meaning.
-    # In MVP, all are not_run; that *is* significant because it prevents readers from treating this as a fact-check.
     ra = pillar_status["Reality Alignment"]
     pi = pillar_status["Reasoning Integrity (Premise Independence)"]
     pr = pillar_status["Presentation Integrity"]
@@ -316,7 +332,12 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_stub(pack)
     evidence = _evidence_lookup(pack)
 
-    claims = _l(_d(pack.get(K.CLAIM_REGISTRY)).get(K.CLAIMS))
+    cr = _d(pack.get(K.CLAIM_REGISTRY))
+    claims = _l(cr.get(K.CLAIMS))
+    claim_evals = _d(cr.get(K.CLAIM_EVALUATIONS))
+    ce_items = _l(claim_evals.get(K.ITEMS))
+    ce_status = _s(claim_evals.get(K.STATUS))
+    ce_score = claim_evals.get("score_0_100", None)
 
     report_pack = _d(pack.get(K.REPORT_PACK))
     findings_pack = _d(report_pack.get(K.FINDINGS_PACK))
@@ -361,6 +382,64 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
             f"{_clip(_s(cd.get(K.CLAIM_TEXT)), 320)}"
         )
         lines.append(f"  - evidence_eids: {cd.get(K.EVIDENCE_EIDS, [])}")
+
+    # ─────────────────────────────────────────────────────────
+    # NEW: Claim Evaluation Engine (Pass B v0.1)
+    # ─────────────────────────────────────────────────────────
+    lines.append("")
+    lines.append("## Claim Evaluation Engine (Pass B v0.1)")
+    if claim_evals:
+        _bullet(lines, f"Status: **{ce_status or 'n/a'}**")
+        if isinstance(ce_score, (int, float)):
+            stars = score_to_stars(float(ce_score))
+            _bullet(lines, f"Score (0–100): **{ce_score}**  →  {render_rating(stars)}")
+        else:
+            _bullet(lines, "Score (0–100): (not provided)")
+
+        if ce_items:
+            # counts
+            typed = _count_by_key([_d(x) for x in ce_items], K.ISSUE_TYPE)
+            sevd = _count_by_key([_d(x) for x in ce_items], K.SEVERITY)
+            _bullet(lines, f"Issue types: { _fmt_counts(typed) }")
+            _bullet(lines, f"Severities: { _fmt_counts(sevd) }")
+
+            lines.append("")
+            lines.append("### Top flagged items")
+            # sort: high -> elevated -> moderate -> low (stable)
+            sev_rank = {"high": 4, "elevated": 3, "moderate": 2, "low": 1}
+            sorted_items = sorted(
+                [_d(x) for x in ce_items],
+                key=lambda it: (sev_rank.get(_s(it.get(K.SEVERITY)).lower(), 0), _s(it.get(K.CLAIM_REF))),
+                reverse=True,
+            )
+
+            for it in sorted_items[:12]:
+                claim_ref = _s(it.get(K.CLAIM_REF)) or "(claim?)"
+                issue = _s(it.get(K.ISSUE_TYPE)) or "(issue?)"
+                sev = _s(it.get(K.SEVERITY)) or "(sev?)"
+                support = _s(it.get(K.SUPPORT_CLASS)) or "(support?)"
+                expl = _s(it.get(K.EXPLANATION)) or ""
+                eids = _l(it.get(K.EVIDENCE_EIDS))
+                eid_str = ", ".join([_s(e) for e in eids if _s(e)])
+                quote = ""
+                if eids:
+                    q = evidence.get(_s(eids[0]), "")
+                    if q:
+                        quote = _clip(q, 200)
+
+                lines.append(f"- **{claim_ref}** — `{issue}` (severity: **{sev}**, support: **{support}**)")
+                if expl:
+                    lines.append(f"  - {expl}")
+                if eid_str:
+                    lines.append(f"  - evidence: `{eid_str}`")
+                if quote:
+                    lines.append(f"  - quote: “{quote}”")
+        else:
+            _bullet(lines, "No claim evaluation items emitted.")
+    else:
+        _bullet(lines, "claim_registry.claim_evaluations not present in this run.")
+
+    # ─────────────────────────────────────────────────────────
 
     lines.append("")
     lines.append("## Findings pack (current run)")

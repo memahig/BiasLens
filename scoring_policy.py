@@ -1,125 +1,117 @@
 
+
 #!/usr/bin/env python3
 """
 FILE: scoring_policy.py
 VERSION: 0.2
 LAST UPDATED: 2026-02-03
 PURPOSE:
-Single source of truth for BiasLens internal numeric scoring aggregation (0–100).
+Deterministic scoring policy for Claim Evaluation Engine.
 
-This file does NOT compute scores.
-It only:
-- defines the scoring *constitution* (module weights)
-- aggregates module scores deterministically
-- declares what is required vs optional (for future gates)
+Design intent:
+- Keep stars as the public-friendly "UI token" (1–5).
+- Maintain a more granular internal score_0_100 for tuning and debugging.
+- Deterministic, stable, no randomness.
 
-Design:
-- Module scores are emitted by Pass B modules as int 0..100.
-- This policy aggregates whatever ran.
-- Missing modules are handled explicitly (no silent assumptions).
+Policy (v0.2):
+- Start at 100.
+- Apply severity-weighted deductions per flagged item.
+- Normalize by claim count *gently* (so longer texts aren't punished too hard).
+- Clamp to 0..100.
+
+Notes:
+- This is NOT a truth score. It is a structural-risk score derived from text signals.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
-from rating_style import clamp_score
-
-
-@dataclass(frozen=True)
-class ModuleSpec:
-    weight: float
-    required: bool = False
+from rating_style import score_to_stars
 
 
-@dataclass(frozen=True)
-class ModuleScore:
-    score_0_100: int
-    status: str  # "run" | "not_run"
+# Severity → deduction points per item
+SEVERITY_WEIGHTS: Dict[str, int] = {
+    "low": 4,
+    "moderate": 10,
+    "elevated": 18,
+    "high": 28,
+}
 
-
-# ─────────────────────────────────────────────────────────────
-# Scoring constitution (edit deliberately)
-# ─────────────────────────────────────────────────────────────
-MODULES: Dict[str, ModuleSpec] = {
-    # Facts / Reality Alignment
-    "facts_layer": ModuleSpec(weight=0.30, required=False),
-
-    # Claim evaluation (support, tethering, attribution discipline, etc.)
-    "claims_layer": ModuleSpec(weight=0.35, required=False),
-
-    # Argument reconstruction + integrity
-    "argument_layer": ModuleSpec(weight=0.20, required=False),
-
-    # Headline/body delta + presentation integrity
-    "presentation_layer": ModuleSpec(weight=0.15, required=False),
+# Optional: issue-specific additional weights (can be tuned later)
+# e.g., if "intent_inference_language" should cost more than a generic elevated.
+ISSUE_WEIGHTS: Dict[str, int] = {
+    # "intent_inference_language": 4,  # example: add +4 points to that issue
 }
 
 
-def _validate_modules(mods: Dict[str, ModuleSpec] = MODULES) -> None:
-    total = sum(float(m.weight) for m in mods.values())
-    if abs(total - 1.0) > 1e-6:
-        raise RuntimeError(f"Scoring policy invalid: weights sum to {total}, expected 1.0")
+def _s(x: Any) -> str:
+    return str(x).strip() if x is not None else ""
 
 
-def aggregate_score(
-    scores: Dict[str, ModuleScore],
+def score_claim_evaluations(
     *,
-    missing_policy: str = "renormalize",  # "renormalize" | "penalize"
-) -> Tuple[int, Dict[str, str], Dict[str, str]]:
+    items: List[Dict[str, Any]],
+    claims: List[Dict[str, Any]],
+) -> Tuple[int, List[str]]:
     """
+    Deterministic structural scoring for the claim evaluation module.
+
+    Inputs:
+      items: claim evaluation flags (each includes 'severity', 'issue_type', etc.)
+      claims: extracted claims list
+
     Returns:
-      (final_score_0_100,
-       status_notes_by_module,
-       required_notes_by_module)
-
-    missing_policy:
-      - renormalize: average over modules that ran
-      - penalize: not_run contributes 0 at full weight (harsh)
-
-    required_notes_by_module:
-      - "required_missing" if required=True and status != "run"
-      - else ""
+      (score_0_100, notes)
     """
-    _validate_modules(MODULES)
+    notes: List[str] = []
 
-    if missing_policy not in {"renormalize", "penalize"}:
-        missing_policy = "renormalize"
+    # --- 1) base score
+    base = 100
 
-    status_notes: Dict[str, str] = {}
-    required_notes: Dict[str, str] = {}
+    # --- 2) total deduction from items
+    deduction = 0
+    sev_counts: Dict[str, int] = {}
+    issue_counts: Dict[str, int] = {}
 
-    num = 0.0
-    den = 0.0
+    for it in items:
+        sev = _s(it.get("severity")).lower() or "low"
+        issue = _s(it.get("issue_type")).lower()
 
-    for name, spec in MODULES.items():
-        ms = scores.get(name)
+        sev_counts[sev] = sev_counts.get(sev, 0) + 1
+        if issue:
+            issue_counts[issue] = issue_counts.get(issue, 0) + 1
 
-        if ms is None:
-            status = "missing"
-            score = None
-        else:
-            status = ms.status if ms.status in {"run", "not_run"} else "not_run"
-            score = clamp_score(ms.score_0_100)
+        w = SEVERITY_WEIGHTS.get(sev, SEVERITY_WEIGHTS["low"])
+        w += ISSUE_WEIGHTS.get(issue, 0)
+        deduction += w
 
-        status_notes[name] = status
+    # --- 3) gentle normalization by number of claims
+    # Rationale: more claims = more opportunities for flags; normalize slowly.
+    #   1 claim -> factor 1.00
+    #   2 claims -> 1.10
+    #   5 claims -> 1.40
+    #  10 claims -> 1.70
+    n_claims = max(1, len(claims))
+    norm_factor = 1.0 + min(0.7, 0.1 * (n_claims - 1))
+    scaled_deduction = int(round(deduction / norm_factor))
 
-        if spec.required and status != "run":
-            required_notes[name] = "required_missing"
-        else:
-            required_notes[name] = ""
+    # --- 4) final score
+    score = base - scaled_deduction
+    score = max(0, min(100, int(score)))
 
-        if status == "run" and score is not None:
-            num += spec.weight * score
-            den += spec.weight
-        else:
-            if missing_policy == "penalize":
-                den += spec.weight  # contributes 0
+    # --- notes for scholar/debug
+    notes.append("Score is deterministic: 100 minus severity-weighted deductions (gently normalized by claim count).")
+    notes.append(f"claims={len(claims)} items={len(items)} raw_deduction={deduction} norm_factor={norm_factor:.2f} scaled_deduction={scaled_deduction}")
+    if sev_counts:
+        sev_summary = ", ".join(f"{k}={sev_counts[k]}" for k in sorted(sev_counts.keys()))
+        notes.append(f"severity_counts: {sev_summary}")
+    if issue_counts:
+        top = sorted(issue_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:8]
+        issue_summary = ", ".join(f"{k}={v}" for k, v in top)
+        notes.append(f"top_issue_types: {issue_summary}")
 
-    if den <= 0.0:
-        # Nothing ran; neutral midpoint but explicitly marked by notes upstream.
-        return (50, status_notes, required_notes)
+    # Sanity note: star band implied by score
+    notes.append(f"score_band_stars={score_to_stars(score)}")
 
-    final = int(round(num / den))
-    return (clamp_score(final), status_notes, required_notes)
+    return score, notes

@@ -46,7 +46,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             source_url="",
         )
         validate_output(report)
-        print("✅ BiasLens integrity gate PASSED.")
+
+        # 🔒 Honor --json even in self-test mode
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+        else:
+            print("✅ BiasLens integrity gate PASSED.")
         return 0
 
     # Determine input text

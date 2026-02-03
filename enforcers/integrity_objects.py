@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """
 FILE: enforcers/integrity_objects.py
@@ -11,9 +13,12 @@ Locks:
 - For 1–4 stars: how_to_improve must be non-empty.
 - For 5 stars: must include non-empty how_to_improve OR (optionally) maintenance_notes.
 
-score_0_100:
+NEW (safe, optional):
 - integrity objects MAY include "score_0_100" (int 0..100).
-- If present, stars must match the score bands (single source of truth in rating_style.py).
+- If present, stars must match the default score bands unless you disable enforcement.
+
+Notes:
+- Unknown extra fields are allowed (ignored) to support telemetry/debug.
 """
 
 from __future__ import annotations
@@ -21,7 +26,6 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from schema_names import K
-from rating_style import score_to_stars
 
 
 # 🔒 LOCKED: star/color/meaning semantics (project constitution)
@@ -47,10 +51,32 @@ _SCORE_KEY = "score_0_100"
 _ENFORCE_SCORE_TO_STARS = True
 
 
+def _score_to_stars(score_0_100: int) -> int:
+    """
+    Default internal mapping (engine-facing), consistent with rating_style.py.
+
+      0–19   -> 1★
+      20–39  -> 2★
+      40–59  -> 3★
+      60–79  -> 4★
+      80–100 -> 5★
+    """
+    s = int(score_0_100)
+    if s < 20:
+        return 1
+    if s < 40:
+        return 2
+    if s < 60:
+        return 3
+    if s < 80:
+        return 4
+    return 5
+
+
 def enforce_integrity_objects(out: Dict[str, Any]) -> List[str]:
     errs: List[str] = []
 
-    # Facts layer integrity object (required)
+    # Facts layer integrity object (required when facts_layer exists)
     facts_layer = out.get(K.FACTS_LAYER)
     if isinstance(facts_layer, dict):
         errs += _validate_integrity_object(
@@ -60,18 +86,30 @@ def enforce_integrity_objects(out: Dict[str, Any]) -> List[str]:
             stars5_allow_maintenance=True,
         )
 
+    # Claim registry integrity object (required when claim_registry exists)
+    claim_registry = out.get(K.CLAIM_REGISTRY)
+    if isinstance(claim_registry, dict):
+        errs += _validate_integrity_object(
+            claim_registry,
+            K.CLAIM_INTEGRITY,
+            ctx="claim_registry.claim_integrity",
+            stars5_allow_maintenance=True,
+        )
+
     # Article layer integrity object (optional)
     article_layer = out.get(K.ARTICLE_LAYER)
     if article_layer is not None:
         if not isinstance(article_layer, dict):
             errs.append("article_layer must be an object if present")
         else:
-            errs += _validate_integrity_object(
-                article_layer,
-                K.ARTICLE_INTEGRITY,
-                ctx="article_layer.article_integrity",
-                stars5_allow_maintenance=True,
-            )
+            # article_integrity is optional (some MVP runs may not emit it yet)
+            if K.ARTICLE_INTEGRITY in article_layer:
+                errs += _validate_integrity_object(
+                    article_layer,
+                    K.ARTICLE_INTEGRITY,
+                    ctx="article_layer.article_integrity",
+                    stars5_allow_maintenance=True,
+                )
 
     return errs
 
@@ -129,11 +167,9 @@ def _validate_integrity_object(
         how_ok = isinstance(how, list) and len(how) > 0
         maint_ok = isinstance(maint, list) and len(maint) > 0
         if not (how_ok or (stars5_allow_maintenance and maint_ok)):
-            errs.append(
-                f"{ctx} for 5 stars must include non-empty how_to_improve OR maintenance_notes"
-            )
+            errs.append(f"{ctx} for 5 stars must include non-empty how_to_improve OR maintenance_notes")
 
-    # Optional internal score_0_100
+    # Optional internal score_0_100 (safe + hidden)
     if _SCORE_KEY in obj:
         score = obj.get(_SCORE_KEY)
 
@@ -144,7 +180,7 @@ def _validate_integrity_object(
                 errs.append(f"{ctx}.{_SCORE_KEY} must be within 0..100 if present")
 
             if _ENFORCE_SCORE_TO_STARS:
-                exp_stars = score_to_stars(score)
+                exp_stars = _score_to_stars(score)
                 if exp_stars != stars:
                     errs.append(
                         f"{ctx} stars mismatch vs {_SCORE_KEY} (score={score} implies {exp_stars}★)"

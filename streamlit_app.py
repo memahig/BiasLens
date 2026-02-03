@@ -1,15 +1,20 @@
 
+
 #!/usr/bin/env python3
 """
 FILE: streamlit_app.py
-VERSION: 0.3
-LAST UPDATED: 2026-02-01
+VERSION: 0.4
+LAST UPDATED: 2026-02-03
 PURPOSE:
 Streamlit UI for BiasLens.
 
 Inputs:
 - Analyze URL: best-effort scrape/download via io_sources.resolve_input_text()
 - Paste Text: bypasses scraping entirely; directly analyzes provided text (recommended during development)
+
+ARCHITECTURE LOCK:
+- UI MUST call builders.report_builder.build_report (Pass A → Pass B).
+- UI MUST NOT call report_stub/analyze_text_to_report_pack directly.
 
 Fail-closed:
 - Always validates the produced report pack; if validation fails, nothing renders as "passed".
@@ -22,18 +27,14 @@ import re
 import streamlit as st
 
 from io_sources import resolve_input_text
-from report_stub import analyze_text_to_report_pack
 
-# Support either module name (your repo has shifted names over time)
-try:
-    from integrity_validator import validate_output, ValidationError  # preferred
-except Exception:
-    from validator import validate_output, ValidationError  # fallback
+# 🔒 Authorized execution spine
+from builders.report_builder import build_report
 
-
+from integrity_validator import validate_output, ValidationError
 from renderer import render_overview, render_reader_in_depth, render_scholar_in_depth
 
-BUILD_ID = "BUILD_2026-02-01_00-15"
+BUILD_ID = "BUILD_2026-02-03_00-45"
 
 
 # -----------------------------
@@ -78,6 +79,21 @@ def _render(pack: dict) -> None:
         st.code(json.dumps(pack, indent=2, ensure_ascii=False), language="json")
 
 
+def _run_report(*, text: str, source_title: str, source_url: str) -> None:
+    with st.spinner("Running BiasLens (Pass A → Pass B → Validator)…"):
+        pack = build_report(text=text, source_title=source_title, source_url=source_url)
+
+        try:
+            validate_output(pack)
+        except ValidationError as e:
+            st.error("❌ Validator failed (fail-closed).")
+            st.code(str(e))
+            return
+
+    st.success("✅ Validator passed.")
+    _render(pack)
+
+
 def _run_from_text(text: str) -> None:
     article_text = (text or "").strip()
     if not article_text:
@@ -92,21 +108,7 @@ def _run_from_text(text: str) -> None:
         )
         return
 
-    source_title = "pasted_text"
-    source_url = ""
-
-    with st.spinner("Running BiasLens (Pass A → Pass B → Validator)…"):
-        pack = analyze_text_to_report_pack(text=article_text, source_title=source_title, source_url=source_url)
-
-        try:
-            validate_output(pack)
-        except ValidationError as e:
-            st.error("❌ Validator failed (fail-closed).")
-            st.code(str(e))
-            return
-
-    st.success("✅ Validator passed.")
-    _render(pack)
+    _run_report(text=article_text, source_title="pasted_text", source_url="")
 
 
 def _run_from_url(url: str) -> None:
@@ -126,18 +128,7 @@ def _run_from_url(url: str) -> None:
         )
         return
 
-    with st.spinner("Running BiasLens (Pass A → Pass B → Validator)…"):
-        pack = analyze_text_to_report_pack(text=article_text, source_title=source_title, source_url=source_url)
-
-        try:
-            validate_output(pack)
-        except ValidationError as e:
-            st.error("❌ Validator failed (fail-closed).")
-            st.code(str(e))
-            return
-
-    st.success("✅ Validator passed.")
-    _render(pack)
+    _run_report(text=article_text, source_title=source_title, source_url=source_url)
 
 
 # -----------------------------
