@@ -12,6 +12,16 @@ ARCHITECTURE LOCK:
 Right now:
 - This is a stub that performs no modifications (identity transform).
 """
+# 🔒 ARCHITECTURE LOCK — PASS B ORCHESTRATOR
+# Pass B is the ONLY location where post–Pass A reasoning may occur.
+#
+# DO NOT:
+# - inject reasoning into report_stub.py
+# - bypass this layer
+# - fork the builder path
+#
+# All verification, retrieval, claim evaluation,
+# argument synthesis, and scoring must flow through Pass B.
 
 from __future__ import annotations
 
