@@ -285,10 +285,15 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
         )
 
     # -----------------------------
-    # Pass B module: claim_evaluations (optional but if present must be well-formed)
+    # Pass B module: claim_evaluations (REQUIRED)
     # -----------------------------
     ce = cr.get(K.CLAIM_EVALUATIONS)
-    if ce is not None:
+
+    if ce is None:
+        errs.append(
+            f"{K.CLAIM_REGISTRY}.{K.CLAIM_EVALUATIONS} is required (Pass B must run)"
+        )
+    else:
         ce_ctx = f"{K.CLAIM_REGISTRY}.{K.CLAIM_EVALUATIONS}"
 
         if not isinstance(ce, dict):
@@ -344,6 +349,7 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
                     it_ctx,
                 )
 
+
     # -----------------------------
     # Pass B derived integrity: claim_integrity (optional but if present must be valid)
     # -----------------------------
@@ -391,7 +397,6 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
                     errs.append(f"{ci_ctx}.score_0_100 must be int 0..100 if present")
 
     return errs
-
 
 
 # -----------------------------
