@@ -210,6 +210,20 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     else:
         _bullet(lines, "No findings were emitted in this run.")
 
+    # ─────────────────────────────────────────────────────────
+    # Claim Integrity snapshot (NEW)
+    # ─────────────────────────────────────────────────────────
+    claim_integrity = _d(_d(pack.get(K.CLAIM_REGISTRY)).get(K.CLAIM_INTEGRITY))
+    if claim_integrity:
+        stars = claim_integrity.get(K.STARS, 3)
+        lines.append("")
+        lines.append("## Claim Integrity")
+        _bullet(lines, f"Rating: **{render_rating(stars)}**")
+
+        bullets = claim_integrity.get(K.RATIONALE_BULLETS, [])
+        for b in bullets[:3]:
+            _bullet(lines, _clip(_s(b), 160))
+
     lines.append("")
     lines.append("## Evidence discipline snapshot")
     if num_claims is not None and num_evidence is not None:
