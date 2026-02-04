@@ -307,14 +307,14 @@ def analyze_text_to_report_pack(
             K.FACTS: facts,
             K.FACT_TABLE_INTEGRITY: fact_table_integrity,
             # new required pillar socket
-            "reality_alignment_analysis": reality_alignment_analysis,
+            K.REALITY_ALIGNMENT_ANALYSIS: reality_alignment_analysis,
         },
         K.CLAIM_REGISTRY: {K.CLAIMS: claims},
         K.ARTICLE_LAYER: {
             K.ARTICLE_INTEGRITY: article_integrity,
             K.PRESENTATION_INTEGRITY: presentation_integrity,
             # new required pillar socket
-            "premise_independence_analysis": premise_independence_analysis,
+            K.PREMISE_INDEPENDENCE_ANALYSIS: premise_independence_analysis,
         },
         K.METRICS: {
             K.EVIDENCE_DENSITY: {
@@ -344,7 +344,7 @@ def analyze_text_to_report_pack(
                 "Reader guide (MVP): This output is quote-tethered and conservative: it shows what was said (verbatim) but does not "
                 "yet verify accuracy. Treat it as an evidence index and a checklist for what to verify next, not as a fact-check."
             ),
-            K.FINDINGS_PACK: {"items": []},
+            K.FINDINGS_PACK: {K.ITEMS: []},
         },
     }
 
