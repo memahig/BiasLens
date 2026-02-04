@@ -258,6 +258,9 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
 
     errs: List[str] = []
 
+    # -----------------------------
+    # Base claim list validation (existing behavior)
+    # -----------------------------
     for i, c in enumerate(claims):
         ctx = f"{K.CLAIM_REGISTRY}.{K.CLAIMS}[{i}]"
 
@@ -281,7 +284,114 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
             ctx,
         )
 
+    # -----------------------------
+    # Pass B module: claim_evaluations (optional but if present must be well-formed)
+    # -----------------------------
+    ce = cr.get(K.CLAIM_EVALUATIONS)
+    if ce is not None:
+        ce_ctx = f"{K.CLAIM_REGISTRY}.{K.CLAIM_EVALUATIONS}"
+
+        if not isinstance(ce, dict):
+            errs.append(f"{ce_ctx} must be an object")
+        else:
+            # Status key is governed: MODULE_STATUS is write authority; STATUS is legacy read.
+            st = ce.get(K.MODULE_STATUS, ce.get(K.STATUS))
+            if st not in {"run", "not_run"}:
+                errs.append(f"{ce_ctx}.{K.MODULE_STATUS} must be 'run' or 'not_run'")
+
+            items = ce.get(K.ITEMS)
+            if not isinstance(items, list):
+                errs.append(f"{ce_ctx}.{K.ITEMS} must be a list")
+                items = []
+
+            # Optional: score_0_100
+            if "score_0_100" in ce:
+                s = ce.get("score_0_100")
+                if not isinstance(s, int) or not (0 <= s <= 100):
+                    errs.append(f"{ce_ctx}.score_0_100 must be int 0..100 if present")
+
+            # Optional: notes
+            if "notes" in ce:
+                notes = ce.get("notes")
+                if not isinstance(notes, list) or any(not isinstance(n, str) for n in notes):
+                    errs.append(f"{ce_ctx}.notes must be a list of strings if present")
+
+            # Validate each claim evaluation item (if items exist)
+            for j, it in enumerate(items):
+                it_ctx = f"{ce_ctx}.{K.ITEMS}[{j}]"
+
+                if not isinstance(it, dict):
+                    errs.append(f"{it_ctx} must be an object")
+                    continue
+
+                # Required fields in each item
+                for req_key in [K.CLAIM_REF, K.ISSUE_TYPE, K.SEVERITY, K.SUPPORT_CLASS, K.EXPLANATION]:
+                    if not (it.get(req_key) or "").strip():
+                        errs.append(f"{it_ctx} missing {req_key}")
+
+                sev = (it.get(K.SEVERITY) or "").strip()
+                if sev and sev not in {"low", "moderate", "elevated", "high"}:
+                    errs.append(f"{it_ctx}.{K.SEVERITY} invalid")
+
+                sc = (it.get(K.SUPPORT_CLASS) or "").strip()
+                if sc and sc not in {"text_signal_only"}:
+                    errs.append(f"{it_ctx}.{K.SUPPORT_CLASS} invalid")
+
+                # evidence_eids (optional but if present must be valid and non-empty)
+                errs += _validate_eids_if_present(
+                    it.get(K.EVIDENCE_EIDS),
+                    evidence_ids,
+                    it_ctx,
+                )
+
+    # -----------------------------
+    # Pass B derived integrity: claim_integrity (optional but if present must be valid)
+    # -----------------------------
+    ci = cr.get(K.CLAIM_INTEGRITY)
+    if ci is not None:
+        ci_ctx = f"{K.CLAIM_REGISTRY}.{K.CLAIM_INTEGRITY}"
+        if not isinstance(ci, dict):
+            errs.append(f"{ci_ctx} must be an object")
+        else:
+            # Reuse the canonical integrity object enforcer expectations (structural only here).
+            # Required keys for an integrity object:
+            for req_key in [
+                K.STARS,
+                K.LABEL,
+                K.COLOR,
+                K.CONFIDENCE,
+                K.RATIONALE_BULLETS,
+                K.GATING_FLAGS,
+            ]:
+                if req_key not in ci:
+                    errs.append(f"{ci_ctx}.{req_key} missing")
+
+            stars = ci.get(K.STARS)
+            if not isinstance(stars, int) or not (1 <= stars <= 5):
+                errs.append(f"{ci_ctx}.{K.STARS} must be int 1–5")
+
+            conf = ci.get(K.CONFIDENCE)
+            if conf not in {"low", "medium", "high"}:
+                errs.append(f"{ci_ctx}.{K.CONFIDENCE} invalid")
+
+            rb = ci.get(K.RATIONALE_BULLETS)
+            if not isinstance(rb, list) or len(rb) == 0:
+                errs.append(f"{ci_ctx}.{K.RATIONALE_BULLETS} must be a non-empty list")
+
+            # how_to_improve required for stars <= 4
+            how = ci.get(K.HOW_TO_IMPROVE)
+            if isinstance(stars, int) and stars <= 4:
+                if not isinstance(how, list) or len(how) == 0:
+                    errs.append(f"{ci_ctx}.{K.HOW_TO_IMPROVE} must be non-empty for stars <= 4")
+
+            # Optional score_0_100
+            if "score_0_100" in ci:
+                s = ci.get("score_0_100")
+                if not isinstance(s, int) or not (0 <= s <= 100):
+                    errs.append(f"{ci_ctx}.score_0_100 must be int 0..100 if present")
+
     return errs
+
 
 
 # -----------------------------
