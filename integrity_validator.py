@@ -81,6 +81,12 @@ def validate_top_level(out: Any) -> List[str]:
     sv = out.get(K.SCHEMA_VERSION)
     if not isinstance(sv, str) or not sv.strip():
         errs.append(f"{K.SCHEMA_VERSION} must be a non-empty string")
+    else:
+        # 🔒 Schema version authority: emitted producer version must match current.
+        if sv != K.SCHEMA_VERSION_CURRENT:
+            errs.append(
+                f"{K.SCHEMA_VERSION} mismatch (expected {K.SCHEMA_VERSION_CURRENT}, got {sv})"
+            )
 
     return errs
 
