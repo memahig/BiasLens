@@ -20,7 +20,7 @@ class K:
 
     # 🔒 Schema version discipline (do not edit without deliberate migration)
     # This is the producer version for all emitted report packs.
-    SCHEMA_VERSION_CURRENT = "1.0"
+    SCHEMA_VERSION_CURRENT = "1.0.0"
 
     RUN_METADATA = "run_metadata"
     EVIDENCE_BANK = "evidence_bank"
