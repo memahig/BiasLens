@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 FILE: modules/claims/claim_evaluator.py
@@ -168,8 +169,9 @@ def run_claim_evaluator(pack: Dict[str, Any]) -> Dict[str, Any]:
     score, notes = score_claim_evaluations(items=items, claims=claims)
 
     return {
-        K.STATUS: "run",
+        K.MODULE_STATUS: "run",
         K.ITEMS: items,
         "score_0_100": int(score),
         "notes": ["Claim Evaluation Engine v0.4 — deterministic text signals.", *notes],
     }
+
