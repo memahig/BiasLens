@@ -119,9 +119,16 @@ class K:
 
     # --- counterevidence_status ---
     REQUIRED = "required"
+
+    # WRITE AUTHORITY (new): avoids collision with module execution status
+    COUNTEREVIDENCE_RUN_STATUS = "run_status"
+
+    # LEGACY READ-ONLY (do not emit in new code)
     STATUS = "status"
+
     SEARCH_SCOPE = "search_scope"
     RESULT = "result"
+
 
     # --- declared_limits ---
     LIMIT_ID = "limit_id"
@@ -183,5 +190,6 @@ class K:
     MODULE_STATUS = "status"
     MODULE_RUN = "run"
     MODULE_NOT_RUN = "not_run"
+
 
 

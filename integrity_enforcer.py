@@ -35,24 +35,48 @@ def enforce_integrity(out: Dict[str, Any], evidence_ids: Set[str]) -> List[str]:
 def _enforce_premise_independence(out: Dict[str, Any]) -> List[str]:
     errs: List[str] = []
 
-    article_layer = out.get(K.ARTICLE_LAYER, {})
+    article_layer = out.get(K.ARTICLE_LAYER)
+    if article_layer is None:
+        return errs
 
-    if article_layer and K.PREMISE_INDEPENDENCE_ANALYSIS not in article_layer:
+    if not isinstance(article_layer, dict):
+        errs.append("article_layer must be an object for premise_independence_analysis enforcement")
+        return errs
+
+    pia = article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)
+
+    if pia is None:
         errs.append(
             "premise_independence_analysis missing from article_layer (Reasoning Integrity pillar required)"
         )
+        return errs
+
+    if not isinstance(pia, dict):
+        errs.append("premise_independence_analysis must be an object")
 
     return errs
-
 
 def _enforce_reality_alignment(out: Dict[str, Any]) -> List[str]:
     errs: List[str] = []
 
-    facts_layer = out.get(K.FACTS_LAYER, {})
+    facts_layer = out.get(K.FACTS_LAYER)
+    if facts_layer is None:
+        return errs
 
-    if facts_layer and K.REALITY_ALIGNMENT_ANALYSIS not in facts_layer:
+    if not isinstance(facts_layer, dict):
+        errs.append("facts_layer must be an object for reality_alignment_analysis enforcement")
+        return errs
+
+    raa = facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)
+
+    if raa is None:
         errs.append(
             "reality_alignment_analysis missing from facts_layer (Reality Alignment pillar required)"
         )
+        return errs
+
+    if not isinstance(raa, dict):
+        errs.append("reality_alignment_analysis must be an object")
 
     return errs
+

@@ -14,7 +14,7 @@ Locks:
 - For 5 stars: must include non-empty how_to_improve OR (optionally) maintenance_notes.
 
 NEW (safe, optional):
-- integrity objects MAY include "score_0_100" (int 0..100).
+- integrity objects MAY include K.SCORE_0_100 (int 0..100).
 - If present, stars must match the default score bands unless you disable enforcement.
 
 Notes:
@@ -45,7 +45,7 @@ STAR_MAP = {
 CONF_ALLOWED = {"low", "medium", "high"}
 
 # Optional field name (literal key to avoid schema_names drift)
-_SCORE_KEY = "score_0_100"
+_SCORE_KEY = K.SCORE_0_100
 
 # If True: when score_0_100 is present, enforce that stars match score bands.
 _ENFORCE_SCORE_TO_STARS = True
