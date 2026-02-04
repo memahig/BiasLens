@@ -261,7 +261,7 @@ def analyze_text_to_report_pack(
 
     # REQUIRED PILLAR: Reality Alignment analysis (placeholder; not_run)
     reality_alignment_analysis = {
-        "status": "not_run",
+        K.MODULE_STATUS: "not_run",
         "notes": [
             "Required pillar socket present. MVP does not yet perform independent fact-checking/retrieval.",
             "When implemented, this module will independently verify checkable facts against external sources (not just quoted actors).",
@@ -288,7 +288,7 @@ def analyze_text_to_report_pack(
 
     # REQUIRED PILLAR: Premise Independence / Reasoning Integrity (placeholder; not_run)
     premise_independence_analysis = {
-        "status": "not_run",
+        K.MODULE_STATUS: "not_run",
         "notes": [
             "Required pillar socket present. MVP does not yet compute premise dependence / premise-independence.",
             "When implemented, this module will identify claims whose support depends on accepting contested premises (and report that at Scholar level; Reader level when it changes meaning).",

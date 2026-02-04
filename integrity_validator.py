@@ -33,6 +33,12 @@ def validate_output(output: dict) -> bool:
 
     evidence_ids = collect_evidence_ids(output)
 
+def _read_module_status(d: Any) -> Any:
+    if not isinstance(d, dict):
+        return None
+    # MODULE_STATUS is write authority; STATUS is legacy read fallback
+    return d.get(K.MODULE_STATUS, d.get(K.STATUS))
+
     # Normative rules
     errors += enforce_integrity(output, evidence_ids)
 
@@ -570,7 +576,7 @@ def validate_counterevidence_status(out: Dict[str, Any]) -> List[str]:
 
     errs: List[str] = []
 
-    status = cs.get(K.MODULE_STATUS, K.STATUS)
+    status = cs.get(K.MODULE_STATUS) or cs.get(K.STATUS)
 
     if status not in _ALLOWED_COUNTEREVIDENCE_STATUS:
         errs.append(f"{K.METRICS}.{K.COUNTEREVIDENCE_STATUS}.{K.STATUS} invalid")

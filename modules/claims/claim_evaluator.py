@@ -99,7 +99,7 @@ def _detect_for_claim(claim: Dict[str, Any]) -> List[Dict[str, Any]]:
             _mk_item(
                 claim_id=cid,
                 issue_type="absolute_language",
-                severity="moderate",
+                severity=K.SEV_MODERATE,
                 explanation="Uses absolute terms requiring strong evidence or qualifiers.",
                 eids=eids,
             )
@@ -111,7 +111,7 @@ def _detect_for_claim(claim: Dict[str, Any]) -> List[Dict[str, Any]]:
             _mk_item(
                 claim_id=cid,
                 issue_type="causal_assertion",
-                severity="moderate",
+                severity=K.SEV_MODERATE,
                 explanation="Uses explicit causal connector language.",
                 eids=eids,
             )
@@ -122,7 +122,7 @@ def _detect_for_claim(claim: Dict[str, Any]) -> List[Dict[str, Any]]:
                 _mk_item(
                     claim_id=cid,
                     issue_type="causal_verb_phrase",
-                    severity="low",
+                    severity=K.SEV_LOW,
                     explanation="Uses causal verb phrasing without explicit connector; mechanism/support may be needed.",
                     eids=eids,
                 )
@@ -133,7 +133,7 @@ def _detect_for_claim(claim: Dict[str, Any]) -> List[Dict[str, Any]]:
             _mk_item(
                 claim_id=cid,
                 issue_type="intent_inference_language",
-                severity="elevated",
+                severity=K.SEV_ELEVATED,
                 explanation="Contains intent/motive language; requires strong evidence (flagged, not inferred).",
                 eids=eids,
             )
@@ -145,7 +145,7 @@ def _detect_for_claim(claim: Dict[str, Any]) -> List[Dict[str, Any]]:
                 _mk_item(
                     claim_id=cid,
                     issue_type="ambiguous_referent",
-                    severity="low",
+                    severity=K.SEV_LOW,
                     explanation="Contains ambiguous referent (they/it/this) that may require disambiguation.",
                     eids=eids,
                 )

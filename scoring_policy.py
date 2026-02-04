@@ -29,13 +29,14 @@ from typing import Any, Dict, List, Tuple
 
 from rating_style import score_to_stars
 
+from schema_names import K
 
 # Severity → deduction points per item
 SEVERITY_WEIGHTS: Dict[str, int] = {
-    "low": 4,
-    "moderate": 10,
-    "elevated": 18,
-    "high": 28,
+    K.SEV_LOW: 4,
+    K.SEV_MODERATE: 10,
+    K.SEV_ELEVATED: 18,
+    K.SEV_HIGH: 28,
 }
 
 # Optional: issue-specific additional weights (can be tuned later)
@@ -75,14 +76,14 @@ def score_claim_evaluations(
     issue_counts: Dict[str, int] = {}
 
     for it in items:
-        sev = _s(it.get("severity")).lower() or "low"
-        issue = _s(it.get("issue_type")).lower()
+        sev = _s(it.get(K.SEVERITY)).lower() or K.SEV_LOW
+        issue = _s(it.get(K.ISSUE_TYPE)).lower()
 
         sev_counts[sev] = sev_counts.get(sev, 0) + 1
         if issue:
             issue_counts[issue] = issue_counts.get(issue, 0) + 1
 
-        w = SEVERITY_WEIGHTS.get(sev, SEVERITY_WEIGHTS["low"])
+        w = SEVERITY_WEIGHTS.get(sev, SEVERITY_WEIGHTS[K.SEV_LOW])
         w += ISSUE_WEIGHTS.get(issue, 0)
         deduction += w
 

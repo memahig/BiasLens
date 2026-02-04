@@ -18,7 +18,11 @@ from typing import Any, Dict, List, Tuple
 from schema_names import K
 
 
-UNKNOWN_VERDICTS = {"unknown", "not_found", "insufficient_evidence"}
+UNKNOWN_VERDICTS = {
+    K.VERDICT_UNKNOWN,
+    K.VERDICT_NOT_FOUND,
+    K.VERDICT_INSUFFICIENT_EVIDENCE,
+}
 
 
 def compute_fact_table_max_star(facts: List[Dict[str, Any]]) -> int:
@@ -39,14 +43,14 @@ def compute_fact_table_max_star(facts: List[Dict[str, Any]]) -> int:
     """
     checkable = [
         f for f in facts
-        if isinstance(f, dict) and f.get(K.CHECKABILITY) == "checkable"
+        if isinstance(f, dict) and f.get(K.CHECKABILITY) == K.CHECKABILITY_CHECKABLE
     ]
     if not checkable:
         return 5
 
     total = len(checkable)
     unknown = sum(1 for f in checkable if f.get(K.VERDICT) in UNKNOWN_VERDICTS)
-    false = sum(1 for f in checkable if f.get(K.VERDICT) == "false")
+    false = sum(1 for f in checkable if f.get(K.VERDICT) == K.VERDICT_FALSE)
 
     max_star = 5
 

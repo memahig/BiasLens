@@ -76,6 +76,19 @@ class K:
     EVIDENCE_EIDS = "evidence_eids"
     NOTES = "notes"
 
+    # --- fact enums (constitutional) ---
+    CHECKABILITY_CHECKABLE = "checkable"
+    CHECKABILITY_CURRENTLY_UNCHECKABLE = "currently_uncheckable"
+
+    VERDICT_TRUE = "true"
+    VERDICT_FALSE = "false"
+    VERDICT_MIXED = "mixed"
+    VERDICT_UNKNOWN = "unknown"
+    VERDICT_INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    VERDICT_NOT_FOUND = "not_found"
+    VERDICT_UNCHECKABLE = "uncheckable"
+
+
     # --- claim_registry ---
     CLAIMS = "claims"
     CLAIM_ID = "claim_id"
@@ -140,6 +153,7 @@ class K:
     PRESENTATION_INTEGRITY = "presentation_integrity"
 
     # integrity object fields
+    SCORE_0_100 = "score_0_100"
     STARS = "stars"
     LABEL = "label"
     COLOR = "color"
@@ -159,5 +173,15 @@ class K:
     EXPLANATION = "explanation"
     SUPPORT_CLASS = "support_class"
 
-    # presentation_integrity fields
+    # --- severity enums (constitutional) ---
+    SEV_LOW = "low"
+    SEV_MODERATE = "moderate"
+    SEV_ELEVATED = "elevated"
+    SEV_HIGH = "high"
+
+    # --- module status enums (constitutional) ---
     MODULE_STATUS = "status"
+    MODULE_RUN = "run"
+    MODULE_NOT_RUN = "not_run"
+
+

@@ -25,7 +25,7 @@ def enforce_article_layer(out: Dict[str, Any]) -> List[str]:
         errs.append("article_layer.presentation_integrity must be an object")
         return errs
 
-    status = pres.get(K.MODULE_STATUS, pres.get("status"))
+    status = pres.get(K.MODULE_STATUS, pres.get(K.STATUS))
     if status not in {"run", "not_run"}:
         errs.append(
             "article_layer.presentation_integrity.status must be 'run' or 'not_run'"

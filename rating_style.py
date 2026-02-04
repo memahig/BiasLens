@@ -1,3 +1,25 @@
+
+#!/usr/bin/env python3
+"""
+FILE: rating_style.py
+VERSION: 1.0
+LAST UPDATED: 2026-02-03
+PURPOSE:
+Central rating semantics and rendering for BiasLens.
+
+Responsibilities:
+- Define locked star/color/meaning semantics.
+- Provide deterministic score ↔ stars mapping.
+- Render user-facing rating tokens consistently.
+
+LOCKS:
+- Star meanings are constitution-level and must remain aligned with
+  enforcers/integrity_objects.STAR_MAP.
+- Score→stars bands are locked unless a deliberate migration occurs.
+- This file is the single source of truth for rating presentation.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass

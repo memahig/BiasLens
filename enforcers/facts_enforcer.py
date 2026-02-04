@@ -40,7 +40,7 @@ def enforce_facts(out: Dict[str, Any], evidence_ids: Set[str]) -> List[str]:
         verdict = f.get(K.VERDICT)
         checkability = f.get(K.CHECKABILITY)
 
-        if checkability != "checkable":
+        if checkability != K.CHECKABILITY_CHECKABLE:
             continue
         if verdict in UNKNOWN_VERDICTS:
             continue
