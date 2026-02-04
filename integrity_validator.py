@@ -351,16 +351,20 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
 
 
     # -----------------------------
-    # Pass B derived integrity: claim_integrity (optional but if present must be valid)
+    # Pass B derived integrity: claim_integrity (REQUIRED when Pass B runs)
     # -----------------------------
     ci = cr.get(K.CLAIM_INTEGRITY)
-    if ci is not None:
+
+    if ci is None:
+        errs.append(
+            f"{K.CLAIM_REGISTRY}.{K.CLAIM_INTEGRITY} is required when Pass B runs"
+        )
+    else:
         ci_ctx = f"{K.CLAIM_REGISTRY}.{K.CLAIM_INTEGRITY}"
         if not isinstance(ci, dict):
             errs.append(f"{ci_ctx} must be an object")
         else:
-            # Reuse the canonical integrity object enforcer expectations (structural only here).
-            # Required keys for an integrity object:
+            # Structural integrity-object checks (normative checks happen in enforcers)
             for req_key in [
                 K.STARS,
                 K.LABEL,
@@ -397,6 +401,7 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
                     errs.append(f"{ci_ctx}.score_0_100 must be int 0..100 if present")
 
     return errs
+
 
 
 # -----------------------------
