@@ -242,7 +242,7 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
 
     counter = _d(metrics.get(K.COUNTEREVIDENCE_STATUS))
     counter_required = bool(counter.get(K.REQUIRED, False))
-    counter_status = _s(counter.get(K.STATUS))
+    counter_status = _s(K.MODULE_STATUS, counter.get(K.STATUS))
     counter_scope = _s(counter.get(K.SEARCH_SCOPE))
     counter_result = _s(counter.get(K.RESULT))
 
@@ -336,7 +336,7 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
     claims = _l(cr.get(K.CLAIMS))
     claim_evals = _d(cr.get(K.CLAIM_EVALUATIONS))
     ce_items = _l(claim_evals.get(K.ITEMS))
-    ce_status = _s(claim_evals.get(K.STATUS))
+    ce_status = _s(K>MODULE_STATUS, claim_evals.get(K.STATUS))
     ce_score = claim_evals.get("score_0_100", None)
 
     report_pack = _d(pack.get(K.REPORT_PACK))

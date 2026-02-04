@@ -447,7 +447,7 @@ def validate_counterevidence_status(out: Dict[str, Any]) -> List[str]:
 
     errs: List[str] = []
 
-    status = cs.get(K.STATUS)
+    status = cs.get(K.MODULE_STATUS, K.STATUS)
 
     if status not in _ALLOWED_COUNTEREVIDENCE_STATUS:
         errs.append(f"{K.METRICS}.{K.COUNTEREVIDENCE_STATUS}.{K.STATUS} invalid")
