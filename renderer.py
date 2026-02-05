@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Tuple
 from rating_style import render_rating, score_to_stars
 from schema_names import K
 
+from reader_brain import build_reader_in_depth
 
 # ─────────────────────────────────────────────────────────────
 # small helpers
@@ -213,14 +214,14 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     # ─────────────────────────────────────────────────────────
     # Claim Integrity snapshot (NEW)
     # ─────────────────────────────────────────────────────────
-    claim_integrity = _d(_d(pack.get(K.CLAIM_REGISTRY)).get(K.CLAIM_INTEGRITY))
-    if claim_integrity:
-        stars = claim_integrity.get(K.STARS, 3)
+    claim_grounding = _d(_d(pack.get(K.CLAIM_REGISTRY)).get(K.claim_grounding))
+    if claim_grounding:
+        stars = claim_grounding.get(K.STARS, 3)
         lines.append("")
         lines.append("## Claim Integrity")
         _bullet(lines, f"Rating: **{render_rating(stars)}**")
 
-        bullets = claim_integrity.get(K.RATIONALE_BULLETS, [])
+        bullets = claim_grounding.get(K.RATIONALE_BULLETS, [])
         for b in bullets[:3]:
             _bullet(lines, _clip(_s(b), 160))
 
@@ -569,7 +570,8 @@ def render_overview(pack: Dict[str, Any]) -> str:
 
 
 def render_reader_in_depth(pack: Dict[str, Any]) -> str:
-    return _stub_reader_in_depth(pack) if _is_stub_schema(pack) else _brick7_reader(pack)
+    # Reader Brain is downstream rendering intelligence (Phase B).
+    return build_reader_in_depth(pack) if _is_stub_schema(pack) else _brick7_reader(pack)
 
 
 def render_scholar_in_depth(pack: Dict[str, Any]) -> str:

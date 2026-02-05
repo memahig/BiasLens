@@ -14,7 +14,7 @@ Current behavior:
 - Adds optional internal numeric scoring (score_0_100) to integrity objects
   WITHOUT changing stars (uses star-band midpoint to preserve consistency).
 - Runs Claim Evaluation Engine and attaches output under claim_registry.claim_evaluations.
-- NEW: Builds claim_registry.claim_integrity from claim_evaluations.score_0_100 (stars derived).
+- NEW: Builds claim_registry.claim_grounding from claim_evaluations.score_0_100 (stars derived).
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def _ensure_score_midpoint(integ: Dict[str, Any]) -> None:
     integ[_SCORE_KEY] = stars_to_score_midpoint(stars)
 
 
-def _build_claim_integrity(*, claim_eval: Dict[str, Any]) -> Dict[str, Any]:
+def _build_claim_grounding(*, claim_eval: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build a schema-legal integrity object for claim-level integrity.
 
@@ -103,7 +103,7 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     # 1) Attach midpoint scores to existing integrity objects (stable behavior)
     facts_layer = out.get(K.FACTS_LAYER)
     if isinstance(facts_layer, dict):
-        integ = facts_layer.get(K.FACT_TABLE_INTEGRITY)
+        integ = facts_layer.get(K.fact_verification)
         if isinstance(integ, dict):
             _ensure_score_midpoint(integ)
 
@@ -121,6 +121,6 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         cr[K.CLAIM_EVALUATIONS] = claim_module
 
         # 3) NEW: Claim Integrity object derived from claim_evaluations.score_0_100
-        cr[K.CLAIM_INTEGRITY] = _build_claim_integrity(claim_eval=claim_module)
+        cr[K.claim_grounding] = _build_claim_grounding(claim_eval=claim_module)
 
     return out

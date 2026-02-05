@@ -13,7 +13,7 @@ Contract alignment (based on your actual codebase):
     schema_version, run_metadata, evidence_bank, facts_layer, claim_registry, metrics, report_pack
   and requires metrics.evidence_density (with correct evidence_to_claim_ratio).
 - enforcers.integrity_objects.enforce_integrity_objects() requires:
-    facts_layer.fact_table_integrity to be a valid integrity object.
+    facts_layer.fact_verification to be a valid integrity object.
     article_layer.article_integrity to be a valid integrity object.
 - enforcers.article_enforcer.enforce_article_layer() requires:
     if article_layer present -> article_layer.presentation_integrity.status in {"run","not_run"}
@@ -245,7 +245,7 @@ def analyze_text_to_report_pack(
     proposed_stars = 3
     final_stars, max_star = clamp_fact_table_stars(stars=proposed_stars, facts=facts)
 
-    fact_table_integrity = _integrity_object(
+    fact_verification = _integrity_object(
         stars=final_stars,
         confidence="low",
         rationale_bullets=[
@@ -305,7 +305,7 @@ def analyze_text_to_report_pack(
         K.EVIDENCE_BANK: evidence_bank,
         K.FACTS_LAYER: {
             K.FACTS: facts,
-            K.FACT_TABLE_INTEGRITY: fact_table_integrity,
+            K.fact_verification: fact_verification,
             # new required pillar socket
             K.REALITY_ALIGNMENT_ANALYSIS: reality_alignment_analysis,
         },

@@ -8,7 +8,7 @@ PURPOSE: Normative enforcement for Facts Layer in BiasLens.
 
 Notes:
 - Enforces evidence requirements for checkable facts with non-unknown verdicts.
-- Enforces star caps for facts_layer.fact_table_integrity via shared policy
+- Enforces star caps for facts_layer.fact_verification via shared policy
   (see enforcers/facts_star_policy.py) to prevent drift between producer and enforcer.
 - Structural legality remains the responsibility of integrity_validator.py.
 """
@@ -59,7 +59,7 @@ def enforce_facts(out: Dict[str, Any], evidence_ids: Set[str]) -> List[str]:
                 errs.append(f"{ctx} references missing evidence_eid={eid}")
 
     # --- Star caps based on epistemic outcomes (normative; shared policy)
-    integ = fl.get(K.FACT_TABLE_INTEGRITY)
+    integ = fl.get(K.fact_verification)
     if not isinstance(integ, dict):
         return errs
 
@@ -70,6 +70,6 @@ def enforce_facts(out: Dict[str, Any], evidence_ids: Set[str]) -> List[str]:
     max_star = compute_fact_table_max_star(facts)
 
     if stars > max_star:
-        errs.append(f"facts_layer.fact_table_integrity.stars={stars} violates cap max={max_star}")
+        errs.append(f"facts_layer.fact_verification.stars={stars} violates cap max={max_star}")
 
     return errs

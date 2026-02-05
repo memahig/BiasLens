@@ -51,7 +51,7 @@
                 "notes": "MVP: verbatim sentence-fact; not independently verified."
             }
         ],
-        "fact_table_integrity": {
+        "fact_verification": {
             "stars": 2,
             "label": "Poor Information Integrity",
             "color": "orange",

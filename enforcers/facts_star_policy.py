@@ -27,7 +27,7 @@ UNKNOWN_VERDICTS = {
 
 def compute_fact_table_max_star(facts: List[Dict[str, Any]]) -> int:
     """
-    Computes the maximum allowed stars for facts_layer.fact_table_integrity based on
+    Computes the maximum allowed stars for facts_layer.fact_verification based on
     epistemic outcomes of checkable facts.
 
     Policy (current):

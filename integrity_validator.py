@@ -357,16 +357,16 @@ def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List
 
 
     # -----------------------------
-    # Pass B derived integrity: claim_integrity (REQUIRED when Pass B runs)
+    # Pass B derived integrity: claim_grounding (REQUIRED when Pass B runs)
     # -----------------------------
-    ci = cr.get(K.CLAIM_INTEGRITY)
+    ci = cr.get(K.claim_grounding)
 
     if ci is None:
         errs.append(
-            f"{K.CLAIM_REGISTRY}.{K.CLAIM_INTEGRITY} is required when Pass B runs"
+            f"{K.CLAIM_REGISTRY}.{K.claim_grounding} is required when Pass B runs"
         )
     else:
-        ci_ctx = f"{K.CLAIM_REGISTRY}.{K.CLAIM_INTEGRITY}"
+        ci_ctx = f"{K.CLAIM_REGISTRY}.{K.claim_grounding}"
         if not isinstance(ci, dict):
             errs.append(f"{ci_ctx} must be an object")
         else:

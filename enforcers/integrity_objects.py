@@ -81,8 +81,8 @@ def enforce_integrity_objects(out: Dict[str, Any]) -> List[str]:
     if isinstance(facts_layer, dict):
         errs += _validate_integrity_object(
             facts_layer,
-            K.FACT_TABLE_INTEGRITY,
-            ctx="facts_layer.fact_table_integrity",
+            K.fact_verification,
+            ctx="facts_layer.fact_verification",
             stars5_allow_maintenance=True,
         )
 
@@ -91,8 +91,8 @@ def enforce_integrity_objects(out: Dict[str, Any]) -> List[str]:
     if isinstance(claim_registry, dict):
         errs += _validate_integrity_object(
             claim_registry,
-            K.CLAIM_INTEGRITY,
-            ctx="claim_registry.claim_integrity",
+            K.claim_grounding,
+            ctx="claim_registry.claim_grounding",
             stars5_allow_maintenance=True,
         )
 

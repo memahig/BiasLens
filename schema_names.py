@@ -149,9 +149,9 @@ class K:
     RATING = "rating"
 
     # --- integrity layers ---
-    FACT_TABLE_INTEGRITY = "fact_table_integrity"
+    fact_verification = "fact_verification"
     CLAIM_EVALUATIONS = "claim_evaluations"
-    CLAIM_INTEGRITY = "claim_integrity"
+    claim_grounding = "claim_grounding"
     ARGUMENT_LAYER = "argument_layer"
     ARGUMENTS = "arguments"
     ARGUMENT_INTEGRITY = "argument_integrity"
