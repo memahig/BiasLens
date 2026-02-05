@@ -25,6 +25,49 @@ from schema_names import K
 from rating_style import score_to_stars, stars_to_score_midpoint
 from modules.claims.claim_evaluator import run_claim_evaluator
 
+# -----------------------------
+# Timeline Consistency Sensor (MVP)
+# -----------------------------
+
+STATE_MISSING = ("missing", "abduct", "kidnap")
+STATE_ALIVE = ("seen", "spotted", "shopping", "called", "spoke", "met")
+
+def _classify_event_state(text: str):
+    t = text.lower()
+
+    if any(w in t for w in STATE_MISSING):
+        return "missing"
+
+    if any(w in t for w in STATE_ALIVE):
+        return "alive"
+
+    return None
+
+
+def _detect_timeline_conflicts(claims):
+
+    states = []
+
+    for c in claims:
+        txt = c.get(K.CLAIM_TEXT, c.get("claim_text", ""))
+        state = _classify_event_state(txt)
+
+        if state:
+            states.append(state)
+
+    if "missing" in states and "alive" in states:
+        return {
+            K.MODULE_STATUS: "run",
+            "flag": "timeline_conflict_candidate",
+            "confidence": "low",
+            "note": "Article contains signals suggesting both disappearance and post-disappearance activity. Requires verification."
+        }
+
+    return {
+        K.MODULE_STATUS: "run",
+        "flag": None
+    }
+
 # Single optional field name (allowed by integrity_objects)
 _SCORE_KEY = "score_0_100"
 
@@ -122,5 +165,12 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
 
         # 3) NEW: Claim Integrity object derived from claim_evaluations.score_0_100
         cr[K.claim_grounding] = _build_claim_grounding(claim_eval=claim_module)
+
+    # ---- Timeline consistency (Article Layer) ----
+    article_layer = out.get(K.ARTICLE_LAYER)
+
+    if isinstance(article_layer, dict) and isinstance(cr, dict):
+        claims = cr.get(K.CLAIMS, [])
+        article_layer["timeline_consistency"] = _detect_timeline_conflicts(claims)
 
     return out
