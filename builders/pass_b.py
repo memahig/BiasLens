@@ -235,7 +235,13 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
        claims = cr.get(K.CLAIMS, [])
 
        article_layer["timeline_events"] = _extract_timeline_events(claims)
-       article_layer["timeline_consistency"] = _detect_timeline_conflicts(claims)
+       article_layer["timeline_consistency"] = {
+    K.MODULE_STATUS: "not_run",
+    "notes": [
+        "MVP: timeline_events extracted (time anchors + claim refs).",
+        "Timeline consistency checking is not yet implemented; avoid keyword heuristics that produce high false positives.",
+    ],
+}
 
 
     return out
