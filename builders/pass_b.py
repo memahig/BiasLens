@@ -18,6 +18,7 @@ Current behavior:
 """
 
 from __future__ import annotations
+import re
 
 from typing import Any, Dict, List
 
@@ -67,6 +68,67 @@ def _detect_timeline_conflicts(claims):
         K.MODULE_STATUS: "run",
         "flag": None
     }
+
+# -----------------------------
+# Timeline Extractor (MVP v0): time-anchor → ordered events
+# -----------------------------
+
+_TIME_PAT = re.compile(
+    r"(?i)\b("
+    r"(?:mon|tues|wednes|thurs|fri|satur|sun)day"
+    r"|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?"
+    r"|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+    r")\b"
+)
+
+_CLOCK_PAT = re.compile(r"(?i)\b(\d{1,2}:\d{2}\s*(?:a\.m\.|p\.m\.|am|pm)?)\b(?=[:\s]|$)")
+
+
+def _extract_timeline_events(claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    MVP v0:
+    - If a claim contains a date-ish token or a clock time token, treat it as a timeline event.
+    - We do NOT parse absolute datetimes yet.
+    - We preserve extractable anchors so later modules can normalize.
+    """
+    events: List[Dict[str, Any]] = []
+
+    for c in claims:
+        txt = (c.get(K.CLAIM_TEXT, c.get("claim_text", "")) or "").strip()
+        if not txt:
+            continue
+
+        has_day_or_month = bool(_TIME_PAT.search(txt))
+        clock = _CLOCK_PAT.search(txt)
+        clock_str = clock.group(1) if clock else None
+
+        if has_day_or_month or clock_str:
+            events.append(
+                {
+                    "claim_ref": c.get(K.CLAIM_ID, c.get("claim_id", "")),
+                    "time_anchor": clock_str,   # MVP v0: partial
+                    "text": txt,
+                }
+            )
+
+    # MVP v0 ordering: clock times first (when present), then stable original order
+    def _sort_key(e: Dict[str, Any]):
+        t = e.get("time_anchor")
+        if not t:
+            return (1, 0)
+        # parse HH:MM roughly; keep failures at end
+        m = re.search(r"(\d{1,2}):(\d{2})", t)
+        if not m:
+            return (1, 0)
+        hh = int(m.group(1))
+        mm = int(m.group(2))
+        return (0, hh * 60 + mm)
+
+    # IMPORTANT:
+    # Until we implement true datetime normalization,
+    # preserve article order to avoid synthetic chronology.
+    return events
+
 
 # Single optional field name (allowed by integrity_objects)
 _SCORE_KEY = "score_0_100"
@@ -170,7 +232,10 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     article_layer = out.get(K.ARTICLE_LAYER)
 
     if isinstance(article_layer, dict) and isinstance(cr, dict):
-        claims = cr.get(K.CLAIMS, [])
-        article_layer["timeline_consistency"] = _detect_timeline_conflicts(claims)
+       claims = cr.get(K.CLAIMS, [])
+
+       article_layer["timeline_events"] = _extract_timeline_events(claims)
+       article_layer["timeline_consistency"] = _detect_timeline_conflicts(claims)
+
 
     return out
