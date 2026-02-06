@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 
 from typing import Any, Dict, List
+from datetime import datetime
 
 from schema_names import K
 from rating_style import score_to_stars, stars_to_score_midpoint
@@ -81,8 +82,72 @@ _TIME_PAT = re.compile(
     r")\b"
 )
 
-_CLOCK_PAT = re.compile(r"(?i)\b(\d{1,2}:\d{2}\s*(?:a\.m\.|p\.m\.|am|pm)?)\b(?=[:\s]|$)")
+_CLOCK_PAT = re.compile(r"(?i)\b(\d{1,2}:\d{2})\s*(a\.m\.|p\.m\.|am|pm)?\b")
+def _parse_clock_to_minutes(clock_str: str):
+    """
+    MVP: convert 'H:MM' (optionally with am/pm) into minutes since midnight.
+    Returns None if parsing fails.
+    """
+    if not clock_str:
+        return None
 
+    s = clock_str.strip().lower()
+    # remove dots in a.m./p.m.
+    s = s.replace(".", "")
+    m = re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?", s)
+    if not m:
+        return None
+
+    hh = int(m.group(1))
+    mm = int(m.group(2))
+    ap = m.group(3)
+
+    if ap == "pm" and hh != 12:
+        hh += 12
+    if ap == "am" and hh == 12:
+        hh = 0
+
+    return hh * 60 + mm
+
+def _parse_clock_to_minutes(clock_str: str) -> int | None:
+    """
+    Parse times like "5:32 p.m." / "9:48 pm" / "1:47 a.m." into minutes since midnight.
+    Returns None if parsing fails.
+    """
+    if not clock_str:
+        return None
+
+    s = clock_str.strip().lower()
+    # normalize punctuation/spacing: "p.m." -> "pm"
+    s = s.replace("a.m.", "am").replace("p.m.", "pm").replace("a.m", "am").replace("p.m", "pm")
+    s = " ".join(s.split())
+
+    has_ampm = (" am" in f" {s}" or " pm" in f" {s}" or s.endswith("am") or s.endswith("pm"))
+    if not has_ampm:
+        # MVP: accept HH:MM as "minutes in a 12-hour clock with unknown meridiem"
+        # This supports ordering *within a block* but MUST NOT be treated as absolute time.
+        m = re.search(r"(\d{1,2}):(\d{2})", s)
+        if not m:
+            return None
+        hh = int(m.group(1))
+        mm = int(m.group(2))
+        if hh < 0 or hh > 12 or mm < 0 or mm > 59:
+            return None
+        # Map 12 -> 0 (start of 12-hour cycle)
+        hh = 0 if hh == 12 else hh
+        return hh * 60 + mm
+
+
+    try:
+        dt = datetime.strptime(s, "%I:%M %p")
+    except Exception:
+        # also accept "5:32pm" without space
+        try:
+            dt = datetime.strptime(s, "%I:%M%p")
+        except Exception:
+            return None
+
+    return dt.hour * 60 + dt.minute
 
 def _extract_timeline_events(claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -99,35 +164,29 @@ def _extract_timeline_events(claims: List[Dict[str, Any]]) -> List[Dict[str, Any
             continue
 
         has_day_or_month = bool(_TIME_PAT.search(txt))
+
         clock = _CLOCK_PAT.search(txt)
-        clock_str = clock.group(1) if clock else None
+        if clock:
+            hhmm = (clock.group(1) or "").strip()
+            ampm = (clock.group(2) or "").strip()
+            clock_str = (hhmm + (" " + ampm if ampm else "")).strip()
+        else:
+            clock_str = None
 
         if has_day_or_month or clock_str:
             events.append(
                 {
                     "claim_ref": c.get(K.CLAIM_ID, c.get("claim_id", "")),
-                    "time_anchor": clock_str,   # MVP v0: partial
+                    "time_anchor": clock_str,
+                    "time_minutes": _parse_clock_to_minutes(clock_str) if clock_str else None,
                     "text": txt,
                 }
             )
 
-    # MVP v0 ordering: clock times first (when present), then stable original order
-    def _sort_key(e: Dict[str, Any]):
-        t = e.get("time_anchor")
-        if not t:
-            return (1, 0)
-        # parse HH:MM roughly; keep failures at end
-        m = re.search(r"(\d{1,2}):(\d{2})", t)
-        if not m:
-            return (1, 0)
-        hh = int(m.group(1))
-        mm = int(m.group(2))
-        return (0, hh * 60 + mm)
-
     # IMPORTANT:
-    # Until we implement true datetime normalization,
-    # preserve article order to avoid synthetic chronology.
+    # Preserve article order until true datetime normalization exists.
     return events
+
 
 
 # Single optional field name (allowed by integrity_objects)
