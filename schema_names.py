@@ -159,6 +159,22 @@ class K:
     ARTICLE_INTEGRITY = "article_integrity"
     PRESENTATION_INTEGRITY = "presentation_integrity"
 
+    # --- timeline (Pass B / Article Layer) ---
+    TIMELINE_EVENTS = "timeline_events"
+    TIMELINE_CONSISTENCY = "timeline_consistency"
+    TIMELINE_EVENTS = "timeline_events"
+    TIMELINE_SUMMARY = "timeline_summary"
+    TIMELINE_CONSISTENCY = "timeline_consistency"
+
+
+    # timeline_event fields
+    DAY_NAME = "day_name"
+    DAY_INDEX = "day_index"
+    TIME_ANCHOR = "time_anchor"
+    TIME_HAS_MINUTES = "time_has_minutes"
+    TIME_MINUTES = "time_minutes"
+    EVENT_TEXT = "text"
+
     # integrity object fields
     SCORE_0_100 = "score_0_100"
     STARS = "stars"

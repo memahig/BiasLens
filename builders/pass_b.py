@@ -179,7 +179,7 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         claims = cr.get(K.CLAIMS, [])
         events, summary = compute_timeline(claims)
         article_layer[K.TIMELINE_EVENTS] = events
-        article_layer["timeline_summary"] = summary
+        article_layer[K.TIMELINE_SUMMARY] = summary
         article_layer[K.TIMELINE_CONSISTENCY] = {
             K.MODULE_STATUS: K.MODULE_RUN,
             K.NOTES: [
