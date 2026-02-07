@@ -34,6 +34,8 @@ class K:
     # --- NEW CORE ANALYSIS MODULES ---
     PREMISE_INDEPENDENCE_ANALYSIS = "premise_independence_analysis"
     REALITY_ALIGNMENT_ANALYSIS = "reality_alignment_analysis"
+    FRAMING_EVIDENCE_ALIGNMENT = "framing_evidence_alignment"
+
 
     # --- premise independence fields ---
     INDEPENDENCE_LEVEL = "independence_level"

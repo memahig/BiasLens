@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
 """
 FILE: modules/timeline/timeline_engine.py
-VERSION: 0.1
+VERSION: 0.2
+LAST UPDATED: 2026-02-07
 PURPOSE: Timeline extraction + normalization utilities for BiasLens.
 
 Notes:
 - Deterministic MVP.
 - Extracts timeline-capable events from claims using weekday + clock anchors.
 - Normalizes weekday anchors into article-relative day_index (dominant-cluster rebasing).
-- Attaches time-only events to the dominant anchored day (MVP heuristic).
+- Attaches time-only events to the dominant anchored day (MVP heuristic; deterministic).
 - Produces a compact timeline_summary for downstream modules.
+- Phase 4 (NEW): Chronology Intelligence — deterministic timeline coherence signals ONLY.
+    - Detect temporal gaps
+    - Detect compressed sequences
+    - Detect ambiguous chronology
+    - Emit deterministic signals only
+    - ZERO heuristics that guess reality
 """
 
 from __future__ import annotations
 
 import re
+from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
@@ -48,6 +56,17 @@ _DAY_TO_NUM = {
     "saturday": 5,
     "sunday": 6,
 }
+
+
+# -----------------------------
+# Phase 4 thresholds (deterministic constants)
+# -----------------------------
+# These are NOT "reality guesses" — they are purely mechanical thresholds
+# used to describe *story chronology representation* within the article text.
+GAP_MINUTES_LARGE = 180          # 3 hours
+COMPRESS_MAX_DELTA_MINUTES = 3   # 3 minutes
+COMPRESS_CLUSTER_WINDOW = 10     # 10 minutes (rolling cluster window)
+MAX_DAY_SPAN_FOR_MISSING_DAY_CHECK = 14  # avoid weird spans; still deterministic
 
 
 # -----------------------------
@@ -95,7 +114,7 @@ def parse_clock_to_minutes(clock_str: str) -> int | None:
 
 
 # -----------------------------
-# Timeline computation
+# Timeline computation (Phases 1–3)
 # -----------------------------
 
 def extract_timeline_events(claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -164,8 +183,6 @@ def extract_timeline_events(claims: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
     # ---------- Rebase to dominant cluster ----------
     if known_abs:
-        from collections import Counter
-
         mode_day = Counter(known_abs).most_common(1)[0][0]
         for e in events:
             di = e.get(K.DAY_INDEX)
@@ -236,6 +253,169 @@ def build_timeline_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+# -----------------------------
+# Phase 4: Chronology Intelligence (deterministic signals only)
+# -----------------------------
+
+def build_timeline_consistency(
+    events: List[Dict[str, Any]],
+    summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Compute deterministic timeline coherence signals.
+
+    IMPORTANT:
+    - This does NOT attempt to reconstruct absolute datetimes.
+    - This does NOT infer what "really happened".
+    - It ONLY describes properties of the article-relative timeline representation.
+
+    Output is intended for downstream consumers:
+    - Presentation Integrity (timeline coherence vs framing)
+    - Reader layer (chronology clarity paragraph)
+    """
+    out: Dict[str, Any] = {
+        K.MODULE_STATUS: K.MODULE_RUN,
+        "flags": [],
+        "stats": {},
+        "notes": [
+            "Deterministic chronology signals computed from article-relative day_index + time_minutes only.",
+            "No absolute datetime reconstruction. No inference about real-world timing beyond anchors present in text.",
+        ],
+    }
+
+    # Collect usable events: day_index in anchored range and time_minutes present
+    usable: List[Dict[str, Any]] = []
+    for e in events:
+        di = e.get(K.DAY_INDEX)
+        tm = e.get(K.TIME_MINUTES)
+        if isinstance(di, int) and di < 10_000 and isinstance(tm, int):
+            usable.append(e)
+
+    # Basic counts
+    total_events = int(summary.get("total_events") or 0)
+    time_events = int(summary.get("time_events") or 0)
+    anchored_days = int(summary.get("anchored_days") or 0)
+
+    out["stats"]["total_events"] = total_events
+    out["stats"]["time_events"] = time_events
+    out["stats"]["anchored_days"] = anchored_days
+    out["stats"]["usable_time_anchored_events"] = len(usable)
+
+    flags: List[str] = []
+
+    # If there's almost nothing to evaluate, state that deterministically
+    if len(usable) < 2:
+        flags.append("insufficient_time_anchors_for_gap_or_compression")
+        out["stats"]["max_gap_minutes"] = None
+        out["stats"]["num_large_gaps"] = 0
+        out["stats"]["num_compressed_pairs"] = 0
+        out["stats"]["num_compressed_clusters"] = 0
+        out["stats"]["num_duplicate_timestamps"] = 0
+        out["flags"] = flags
+        return out
+
+    # Group by day
+    by_day: Dict[int, List[int]] = defaultdict(list)
+    by_day_pairs: Dict[int, List[Tuple[int, Dict[str, Any]]]] = defaultdict(list)
+    for e in usable:
+        di = int(e[K.DAY_INDEX])
+        tm = int(e[K.TIME_MINUTES])
+        by_day[di].append(tm)
+        by_day_pairs[di].append((tm, e))
+
+    # Missing day indices in the anchored window (deterministic)
+    first_day = summary.get("first_day")
+    last_day = summary.get("last_day")
+    missing_days: List[int] = []
+    if isinstance(first_day, int) and isinstance(last_day, int):
+        span = last_day - first_day
+        if 0 <= span <= MAX_DAY_SPAN_FOR_MISSING_DAY_CHECK:
+            present = set(int(d) for d in by_day.keys())
+            for d in range(first_day, last_day + 1):
+                if d not in present:
+                    missing_days.append(d)
+            if missing_days:
+                flags.append("missing_day_indices_in_story_window")
+        else:
+            # Still deterministic: we are explicit that we did not compute this check.
+            flags.append("missing_day_check_skipped_due_to_large_day_span")
+
+    out["stats"]["missing_day_indices"] = missing_days
+
+    # Within-day gaps + compression + duplicates
+    max_gap = 0
+    num_large_gaps = 0
+    num_compressed_pairs = 0
+    num_duplicate_timestamps = 0
+    compressed_clusters = 0
+
+    for di, times in by_day.items():
+        t_sorted = sorted(times)
+        if len(t_sorted) < 2:
+            continue
+
+        # Duplicate timestamps
+        for i in range(1, len(t_sorted)):
+            if t_sorted[i] == t_sorted[i - 1]:
+                num_duplicate_timestamps += 1
+
+        # Gaps + compressed pairs
+        for i in range(1, len(t_sorted)):
+            delta = t_sorted[i] - t_sorted[i - 1]
+            if delta > max_gap:
+                max_gap = delta
+            if delta >= GAP_MINUTES_LARGE:
+                num_large_gaps += 1
+            if 0 <= delta <= COMPRESS_MAX_DELTA_MINUTES:
+                num_compressed_pairs += 1
+
+        # Compressed clusters (rolling window)
+        # Count clusters where >=3 events fall within COMPRESS_CLUSTER_WINDOW minutes.
+        # Deterministic algorithm: two-pointer window size.
+        lo = 0
+        for hi in range(len(t_sorted)):
+            while t_sorted[hi] - t_sorted[lo] > COMPRESS_CLUSTER_WINDOW:
+                lo += 1
+            window_n = hi - lo + 1
+            if window_n >= 3:
+                compressed_clusters += 1
+                # move lo forward to avoid counting the same dense run too many times
+                lo += 1
+
+    out["stats"]["max_gap_minutes"] = int(max_gap) if max_gap > 0 else 0
+    out["stats"]["num_large_gaps"] = int(num_large_gaps)
+    out["stats"]["num_compressed_pairs"] = int(num_compressed_pairs)
+    out["stats"]["num_compressed_clusters"] = int(compressed_clusters)
+    out["stats"]["num_duplicate_timestamps"] = int(num_duplicate_timestamps)
+
+    # Flags from computed stats (deterministic)
+    if num_large_gaps > 0:
+        flags.append("large_time_gaps_present")
+    if num_compressed_pairs > 0 or compressed_clusters > 0:
+        flags.append("compressed_time_sequences_present")
+    if num_duplicate_timestamps > 0:
+        flags.append("duplicate_time_anchors_present")
+
+    # Ambiguity: many events lack time_minutes even though timeline_events exists
+    # (deterministic ratio check; does not assume anything about reality)
+    if total_events > 0:
+        no_time = max(0, total_events - time_events)
+        out["stats"]["events_without_time_minutes"] = int(no_time)
+        out["stats"]["pct_events_without_time_minutes"] = float(no_time) / float(total_events)
+        if float(no_time) / float(total_events) >= 0.60 and total_events >= 5:
+            flags.append("many_events_lack_time_minutes")
+    else:
+        out["stats"]["events_without_time_minutes"] = 0
+        out["stats"]["pct_events_without_time_minutes"] = 0.0
+
+    out["flags"] = flags
+    return out
+
+
+# -----------------------------
+# Public wrappers
+# -----------------------------
+
 def compute_timeline(claims: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Convenience wrapper for Pass B.
@@ -244,3 +424,16 @@ def compute_timeline(claims: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]
     events = extract_timeline_events(claims)
     summary = build_timeline_summary(events)
     return events, summary
+
+
+def compute_timeline_with_consistency(
+    claims: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
+    """
+    Phase 4-enabled convenience wrapper for Pass B.
+    Returns: (events, summary, timeline_consistency)
+    """
+    events = extract_timeline_events(claims)
+    summary = build_timeline_summary(events)
+    consistency = build_timeline_consistency(events, summary)
+    return events, summary, consistency

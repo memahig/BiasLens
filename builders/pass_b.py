@@ -1,9 +1,7 @@
-
-
 #!/usr/bin/env python3
 """
 FILE: builders/pass_b.py
-PURPOSE: Pass B orchestrator (post-Pass-A) — upgrades/extends a Pass A report pack.
+PURPOSE: Pass B orchestrator (post-Pass-A) — extends a Pass A report pack.
 
 ARCHITECTURE LOCK:
 - Pass B MUST take a Pass A output dict and return a dict.
@@ -14,64 +12,21 @@ Current behavior:
 - Adds optional internal numeric scoring (score_0_100) to integrity objects
   WITHOUT changing stars (uses star-band midpoint to preserve consistency).
 - Runs Claim Evaluation Engine and attaches output under claim_registry.claim_evaluations.
-- NEW: Builds claim_registry.claim_grounding from claim_evaluations.score_0_100 (stars derived).
+- Builds claim_registry.claim_grounding from claim_evaluations.score_0_100 (stars derived).
+- WIRES timeline into article_layer:
+    timeline_events
+    timeline_summary
+    timeline_consistency  (socket: status + notes; no intelligence yet)
 """
 
 from __future__ import annotations
-import re
 
 from typing import Any, Dict, List
-from datetime import datetime
 
 from schema_names import K
 from rating_style import score_to_stars, stars_to_score_midpoint
 from modules.claims.claim_evaluator import run_claim_evaluator
 from modules.timeline.timeline_engine import compute_timeline
-
-
-# -----------------------------
-# Timeline Consistency Sensor (MVP)
-# -----------------------------
-
-STATE_MISSING = ("missing", "abduct", "kidnap")
-STATE_ALIVE = ("seen", "spotted", "shopping", "called", "spoke", "met")
-
-def _classify_event_state(text: str):
-    t = text.lower()
-
-    if any(w in t for w in STATE_MISSING):
-        return "missing"
-
-    if any(w in t for w in STATE_ALIVE):
-        return "alive"
-
-    return None
-
-
-def _detect_timeline_conflicts(claims):
-
-    states = []
-
-    for c in claims:
-        txt = c.get(K.CLAIM_TEXT, c.get("claim_text", ""))
-        state = _classify_event_state(txt)
-
-        if state:
-            states.append(state)
-
-    if "missing" in states and "alive" in states:
-        return {
-            K.MODULE_STATUS: "run",
-            "flag": "timeline_conflict_candidate",
-            "confidence": "low",
-            "note": "Article contains signals suggesting both disappearance and post-disappearance activity. Requires verification."
-        }
-
-    return {
-        K.MODULE_STATUS: "run",
-        "flag": None
-    }
-
 
 
 # Single optional field name (allowed by integrity_objects)
@@ -135,7 +90,7 @@ def _build_claim_grounding(*, claim_eval: Dict[str, Any]) -> Dict[str, Any]:
         K.STARS: stars,
         K.LABEL: label,
         K.COLOR: color,
-        K.CONFIDENCE: "low",  # MVP: text-signal engine; later can rise with retrieval/verification
+        K.CONFIDENCE: "low",
         K.RATIONALE_BULLETS: rationale,
         K.HOW_TO_IMPROVE: how if stars <= 4 else ["Maintain: keep claims specific, qualified, and evidence-tethered."],
         K.GATING_FLAGS: [],
@@ -162,35 +117,41 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(integ, dict):
             _ensure_score_midpoint(integ)
 
-    # 2) Run Claim Evaluation Engine and attach under claim_registry.claim_evaluations
+    # 2) Claim Evaluation Engine → claim_registry.claim_evaluations
     claim_module = run_claim_evaluator(out)
 
     cr = out.get(K.CLAIM_REGISTRY)
     if isinstance(cr, dict):
         cr[K.CLAIM_EVALUATIONS] = claim_module
-
-        # 3) NEW: Claim Integrity object derived from claim_evaluations.score_0_100
         cr[K.claim_grounding] = _build_claim_grounding(claim_eval=claim_module)
 
-    # ---- Timeline consistency (Article Layer) ----
+    # 3) Timeline wiring → article_layer.*
     article_layer = out.get(K.ARTICLE_LAYER)
-
     if isinstance(article_layer, dict) and isinstance(cr, dict):
         claims = cr.get(K.CLAIMS, [])
-        events, summary = compute_timeline(claims)
+        if isinstance(claims, list):
+            events, summary = compute_timeline(claims)
+        else:
+            events, summary = [], {
+                "total_events": 0,
+                "anchored_days": 0,
+                "time_events": 0,
+                "first_day": None,
+                "last_day": None,
+            }
+
         article_layer[K.TIMELINE_EVENTS] = events
         article_layer[K.TIMELINE_SUMMARY] = summary
+
+        # Socket only. No Phase 4 intelligence here.
         article_layer[K.TIMELINE_CONSISTENCY] = {
             K.MODULE_STATUS: K.MODULE_RUN,
-            K.NOTES: [
+            "notes": [
                 "Timeline events extracted using weekday and clock anchors.",
-                "Weekday anchors were normalized into an article-relative day_index (dominant-cluster rebasing).",
-                "Time-only events were attached to the dominant anchored day (MVP heuristic).",
-                "Earlier stray weekday mentions were pushed to the end to preserve the dominant chronology.",
+                "Weekday anchors normalized into article-relative day_index (dominant-cluster rebasing).",
+                "Time-only events attached to the dominant anchored day (MVP heuristic).",
                 "This is heuristic chronology, not absolute datetime reconstruction.",
             ],
         }
-
-
 
     return out

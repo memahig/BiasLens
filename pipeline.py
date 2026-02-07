@@ -60,9 +60,26 @@ def main(argv: Optional[list[str]] = None) -> int:
             args.url, args.file, args.text
         )
     except RuntimeError as e:
-        print("❌ Input failed:")
-        print(str(e))
+        if args.json:
+            fail = build_report(
+                text="(Input could not be resolved; see declared_limits.)",
+                source_title="input_failure",
+                source_url=(args.url or ""),
+            )
+
+            dl = fail.get("declared_limits")
+            if isinstance(dl, list):
+                dl.insert(0, {
+                    "limit_id": "INPUT_FAILURE",
+                    "statement": str(e),
+                })
+            print(json.dumps(fail, indent=2, ensure_ascii=False))
+        else:
+            print("❌ Input failed:")
+            print(str(e))
+
         return 2
+
 
     # 🔒 Authorized builder boundary
     report = build_report(
@@ -78,9 +95,27 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         validate_output(report)
     except ValidationError as e:
-        print("❌ Validator failed (fail-closed):")
-        print(str(e))
+        if args.json:
+            fail = build_report(
+                text="(Validator failed; see declared_limits.)",
+                source_title="validator_failure",
+                source_url=(args.url or ""),
+            )
+
+            dl = fail.get("declared_limits")
+            if isinstance(dl, list):
+                dl.insert(0, {
+                    "limit_id": "VALIDATOR_FAILURE",
+                    "statement": str(e),
+                })
+
+            print(json.dumps(fail, indent=2, ensure_ascii=False))
+        else:
+            print("❌ Validator failed (fail-closed):")
+            print(str(e))
+
         return 3
+
 
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
