@@ -154,4 +154,14 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
             ],
         }
 
+        # 4) Framing–Evidence Alignment (socket only — no intelligence yet)
+        article_layer[K.FRAMING_EVIDENCE_ALIGNMENT] = {
+            K.MODULE_STATUS: K.MODULE_NOT_RUN,
+            "notes": [
+                "Socket present. This module will evaluate whether narrative framing exceeds the strength of presented evidence.",
+                "No heuristics executed in this phase.",
+            ],
+        }
+
     return out
+
