@@ -277,6 +277,39 @@ def _extract_timeline_events(claims: List[Dict[str, Any]]) -> List[Dict[str, Any
     return events
 
 
+def _build_timeline_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    MVP summary so downstream modules never need to scan raw events.
+    Deterministic. No heuristics beyond presence checks.
+    """
+
+    if not events:
+        return {
+            "total_events": 0,
+            "anchored_days": 0,
+            "time_events": 0,
+            "first_day": None,
+            "last_day": None,
+        }
+
+    day_indexes = [
+        e.get(K.DAY_INDEX)
+        for e in events
+        if isinstance(e.get(K.DAY_INDEX), int) and e.get(K.DAY_INDEX) < 10_000
+    ]
+
+    time_events = sum(
+        1 for e in events if isinstance(e.get(K.TIME_MINUTES), int)
+    )
+
+    return {
+        "total_events": len(events),
+        "anchored_days": len(set(day_indexes)) if day_indexes else 0,
+        "time_events": time_events,
+        "first_day": min(day_indexes) if day_indexes else None,
+        "last_day": max(day_indexes) if day_indexes else None,
+    }
+
 # Single optional field name (allowed by integrity_objects)
 _SCORE_KEY = "score_0_100"
 
@@ -380,7 +413,9 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
 
     if isinstance(article_layer, dict) and isinstance(cr, dict):
         claims = cr.get(K.CLAIMS, [])
-        article_layer[K.TIMELINE_EVENTS] = _extract_timeline_events(claims)
+        events = _extract_timeline_events(claims)
+        article_layer[K.TIMELINE_EVENTS] = events
+        article_layer["timeline_summary"] = _build_timeline_summary(events)
         article_layer[K.TIMELINE_CONSISTENCY] = {
             K.MODULE_STATUS: K.MODULE_RUN,
             K.NOTES: [
