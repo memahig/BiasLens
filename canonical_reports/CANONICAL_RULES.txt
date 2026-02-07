@@ -1,0 +1,8 @@
+BIASLENS CANONICAL RULES
+
+1. Capture immediately when authority is observed.
+2. Never edit a canonical after saving.
+3. Canonicals are floors, not ceilings.
+4. Do not over-analyze a single exemplar.
+5. Expand principles only after multiple canonicals exist.
+6. Protect perceptual authority above stylistic preference.
