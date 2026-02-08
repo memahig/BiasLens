@@ -14,7 +14,7 @@ Pure rendering intelligence.
 LOCKS:
 - Reader layer is a TRANSLATION layer, not an analysis layer.
 - Must NOT invent new findings or do new verification.
-- Must render user-facing rating tokens as: dot + stars (via rating_style.render_rating).
+- Must render user-facing rating tokens as: dot + stars (via constants.rating_semantics.render_rating).
 """
 
 from __future__ import annotations
