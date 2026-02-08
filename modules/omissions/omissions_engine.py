@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 FILE: modules/omissions/omissions_engine.py
-VERSION: 0.2
+VERSION: 0.3
 LAST UPDATED: 2026-02-08
 PURPOSE:
 Detect *absence of expected context* (systematic omission) using text-only signals.
@@ -13,7 +13,8 @@ Safety/Locks:
 
 Design:
 - Triggered only by explicit language signals in the provided text.
-- Each detector includes an explicit absence check inside the same text blob.
+- Uses LOCAL WINDOW absence checks (not whole-document) to avoid false negatives.
+- Caps findings per detector to avoid spam in MVP.
 """
 
 from __future__ import annotations
@@ -26,6 +27,10 @@ from schema_names import K
 
 # Where full input text is preserved (set in builders/report_builder.py).
 _INPUT_TEXT_KEY = "input_text"
+
+# MVP caps (per detector)
+_MAX_FINDINGS_PER_DETECTOR = 2
+_WINDOW_CHARS = 250
 
 
 _MAGNITUDE_WORDS = re.compile(
@@ -67,11 +72,19 @@ _QUALIFIERS = re.compile(
     re.IGNORECASE,
 )
 
-# Comparison signals
-_COMPARATIVES = re.compile(
-    r"\b(more|less|higher|lower|fewer|greater|smaller|bigger|compared|versus|vs\.)\b",
+# Comparison triggers (tightened):
+# IMPORTANT: DO NOT trigger on bare "more/less" (false positive: "more details emerge").
+_COMPARISON_CUES = re.compile(
+    r"\b(compared to|versus|vs\.?|relative to|more than|less than|higher than|lower than)\b",
     re.IGNORECASE,
 )
+
+# Paired rhetorical pattern: "more X ... less Y" (keeps legit rhetoric without bare "more" noise)
+_MORE_LESS_PAIR = re.compile(
+    r"\bmore\b[^.\n]{0,80}\bless\b|\bless\b[^.\n]{0,80}\bmore\b",
+    re.IGNORECASE,
+)
+
 
 _HAS_THAN_OR_FROM_TO = re.compile(
     r"\bthan\b|\bfrom\b.+\bto\b",
@@ -100,17 +113,13 @@ def _extract_text_blob(out: Dict[str, Any]) -> str:
     """
     Prefer full input text if preserved in run_metadata['input_text'].
     Otherwise fall back to concatenating evidence quotes.
-
-    This keeps the omissions engine text-only and avoids requiring new schema fields.
     """
-    # 1) Preferred: preserved input text (builder-provided)
     rm = out.get(K.RUN_METADATA)
     if isinstance(rm, dict):
         t = rm.get(_INPUT_TEXT_KEY)
         if isinstance(t, str) and t.strip():
             return t.strip()
 
-    # 2) Fallback: evidence quotes
     parts: List[str] = []
     eb = out.get(K.EVIDENCE_BANK)
     if isinstance(eb, list):
@@ -127,6 +136,12 @@ def _snippet(text: str, start: int, end: int, pad: int = 70) -> str:
     s = max(0, start - pad)
     e = min(len(text), end + pad)
     return text[s:e].replace("\n", " ").strip()
+
+
+def _window(text: str, start: int, end: int, size: int = _WINDOW_CHARS) -> str:
+    s = max(0, start - size)
+    e = min(len(text), end + size)
+    return text[s:e]
 
 
 def _make_finding(
@@ -162,10 +177,13 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     # --------------------------
-    # OMIT_001: baseline missing
+    # OMIT_001: baseline missing (LOCAL window)
     # --------------------------
-    if _MAGNITUDE_WORDS.search(text) and not _HAS_NUMBER.search(text):
-        m = _MAGNITUDE_WORDS.search(text)
+    n = 0
+    for m in _MAGNITUDE_WORDS.finditer(text):
+        w = _window(text, m.start(), m.end())
+        if _HAS_NUMBER.search(w):
+            continue
         trig = _snippet(text, m.start(), m.end())
         findings.append(
             _make_finding(
@@ -173,17 +191,23 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
                 omission_type="baseline_missing",
                 trigger_text=trig,
                 expected_context="Baseline/denominator (prior value, comparison point, or magnitude) for the claimed change.",
-                absence_signal="Magnitude language present but no numeric baseline/denominator detected in the analyzed text.",
+                absence_signal="Magnitude language appears without a nearby numeric baseline/denominator (local-window check).",
                 impact="Without a baseline, readers cannot judge how large or unusual the change is; framing may overstate significance.",
                 severity=K.SEV_MODERATE,
             )
         )
+        n += 1
+        if n >= _MAX_FINDINGS_PER_DETECTOR:
+            break
 
     # --------------------------
-    # OMIT_002: time window missing
+    # OMIT_002: time window missing (LOCAL window)
     # --------------------------
-    if _TREND_WORDS.search(text) and not (_HAS_TIME_HINT.search(text) or _HAS_DATE.search(text)):
-        m = _TREND_WORDS.search(text)
+    n = 0
+    for m in _TREND_WORDS.finditer(text):
+        w = _window(text, m.start(), m.end())
+        if _HAS_TIME_HINT.search(w) or _HAS_DATE.search(w):
+            continue
         trig = _snippet(text, m.start(), m.end())
         findings.append(
             _make_finding(
@@ -191,42 +215,51 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
                 omission_type="time_window_missing",
                 trigger_text=trig,
                 expected_context="Time window (dates/range) for the described trend.",
-                absence_signal="Trend language present but no explicit time window/date anchors detected in the analyzed text.",
-                impact="Without a time window, trend claims are hard to evaluate and can mislead via ambiguity (short-term blip vs long-term shift).",
+                absence_signal="Trend language appears without a nearby time window/date anchor (local-window check).",
+                impact="Without a time window, trend claims can mislead via ambiguity (short-term blip vs long-term shift).",
                 severity=K.SEV_MODERATE,
             )
         )
+        n += 1
+        if n >= _MAX_FINDINGS_PER_DETECTOR:
+            break
 
     # --------------------------
-    # OMIT_003: scope boundary missing
-    # Trigger: generalizers + group nouns
-    # Absence: no nearby qualifiers (coarse text-wide check for MVP)
+    # OMIT_003: scope boundary missing (LOCAL window)
+    # Trigger: generalizer + group noun near each other
+    # Absence: no qualifiers in same window
     # --------------------------
-    if _GENERALIZERS.search(text) and _GROUP_NOUNS.search(text) and not _QUALIFIERS.search(text):
-        mg = _GENERALIZERS.search(text)
-        mn = _GROUP_NOUNS.search(text)
-        start = min(mg.start(), mn.start())
-        end = max(mg.end(), mn.end())
-        trig = _snippet(text, start, end)
+    n = 0
+    for mg in _GENERALIZERS.finditer(text):
+        w = _window(text, mg.start(), mg.end())
+        if not _GROUP_NOUNS.search(w):
+            continue
+        if _QUALIFIERS.search(w):
+            continue
+        trig = _snippet(text, mg.start(), mg.end())
         findings.append(
             _make_finding(
                 omission_id="OMIT_003",
                 omission_type="scope_boundary_missing",
                 trigger_text=trig,
                 expected_context="Scope boundaries/qualifiers (who exactly, where, when, and under what conditions) for broad generalizations.",
-                absence_signal="Generalizing language detected without offsetting qualifiers (e.g., some/many/often/among/within) in the analyzed text.",
+                absence_signal="Generalizing language appears near a group reference without nearby qualifiers (local-window check).",
                 impact="Without scope boundaries, readers may overgeneralize from limited cases to an entire group or context.",
                 severity=K.SEV_MODERATE,
             )
         )
+        n += 1
+        if n >= _MAX_FINDINGS_PER_DETECTOR:
+            break
 
     # --------------------------
-    # OMIT_004: comparison class missing
-    # Trigger: comparative language
-    # Absence: no 'than' or 'from X to Y' structure (MVP coarse check)
+    # OMIT_004: comparison class missing (LOCAL window)
     # --------------------------
-    if _COMPARATIVES.search(text) and not _HAS_THAN_OR_FROM_TO.search(text):
-        m = _COMPARATIVES.search(text)
+    n = 0
+    for m in _COMPARISON_CUES.finditer(text):
+        w = _window(text, m.start(), m.end())
+        if _HAS_THAN_OR_FROM_TO.search(w):
+            continue
         trig = _snippet(text, m.start(), m.end())
         findings.append(
             _make_finding(
@@ -234,19 +267,23 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
                 omission_type="comparison_class_missing",
                 trigger_text=trig,
                 expected_context="Explicit comparison class (compared to what/whom; from what baseline to what new value).",
-                absence_signal="Comparative language detected but no explicit comparator structure (e.g., 'than', 'from ... to ...') found in the analyzed text.",
+                absence_signal="Comparative language appears without a nearby explicit comparator structure (local-window check).",
                 impact="Without an explicit comparator, comparative claims can feel precise while remaining underspecified.",
                 severity=K.SEV_MODERATE,
             )
         )
+        n += 1
+        if n >= _MAX_FINDINGS_PER_DETECTOR:
+            break
 
     # --------------------------
-    # OMIT_005: causal bridge missing
-    # Trigger: causal connectors
-    # Absence: neither mechanism hints nor evidence-type hints (MVP coarse check)
+    # OMIT_005: causal bridge missing (LOCAL window)
     # --------------------------
-    if _CAUSAL_WORDS.search(text) and not (_MECHANISM_HINTS.search(text) or _EVIDENCE_TYPE_HINTS.search(text)):
-        m = _CAUSAL_WORDS.search(text)
+    n = 0
+    for m in _CAUSAL_WORDS.finditer(text):
+        w = _window(text, m.start(), m.end())
+        if _MECHANISM_HINTS.search(w) or _EVIDENCE_TYPE_HINTS.search(w):
+            continue
         trig = _snippet(text, m.start(), m.end())
         findings.append(
             _make_finding(
@@ -254,11 +291,14 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
                 omission_type="causal_bridge_missing",
                 trigger_text=trig,
                 expected_context="Causal bridge: mechanism description and/or evidence type supporting the causal link.",
-                absence_signal="Causal language detected but no mechanism markers or evidence-type markers found in the analyzed text.",
+                absence_signal="Causal language appears without nearby mechanism markers or evidence-type markers (local-window check).",
                 impact="Without a causal bridge, readers may accept causal interpretation as settled when it may be only asserted or ambiguous.",
                 severity=K.SEV_ELEVATED,
             )
         )
+        n += 1
+        if n >= _MAX_FINDINGS_PER_DETECTOR:
+            break
 
     return {
         K.MODULE_STATUS: K.MODULE_RUN,
@@ -266,5 +306,6 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
         "notes": [
             "Omissions scan uses text-only signals; it flags absence of expected context, not intent.",
             f"Text source: {'run_metadata.input_text' if isinstance(out.get(K.RUN_METADATA), dict) and isinstance(out.get(K.RUN_METADATA, {}).get(_INPUT_TEXT_KEY), str) else 'evidence_bank quotes'}",
+            f"Local-window checks enabled (±{_WINDOW_CHARS} chars), capped at {_MAX_FINDINGS_PER_DETECTOR} findings per detector.",
         ],
     }
