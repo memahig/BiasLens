@@ -248,6 +248,48 @@ The evidence governs.
 BiasLens is an information integrity instrument — not a commentator.
 
 ────────────────────────────────
+READER–SCHOLAR ASYMMETRY LOCK
+────────────────────────────────
+
+BiasLens renders two reports from a single evidence-indexed audit dataset:
+
+PRIMARY REPORT — READER IN-DEPTH  
+This is the public-facing product.
+
+It translates structural findings into clear human meaning, explaining:
+
+• what kind of article this is  
+• how it operates on readers  
+• where epistemic risk may arise  
+• how confidence should be calibrated  
+
+The Reader report may simplify language, but it may NEVER introduce claims that are not traceable to the audit dataset.
+
+SECONDARY REPORT — SCHOLAR IN-DEPTH  
+This is the structural transparency layer.
+
+It exposes:
+
+• claim mappings  
+• evidence links  
+• reasoning analysis  
+• module outputs  
+• uncertainty states  
+• validator constraints  
+
+The Scholar report is permitted to contain MORE detail than the Reader report.
+
+The Reader report is NEVER permitted to contain information that does not exist in the Scholar layer.
+
+This establishes a strict asymmetry:
+
+Scholar ⟶ may exceed Reader in depth  
+Reader ⟶ may never exceed Scholar in substance
+
+Any violation of this directionality constitutes a system regression.
+
+
+────────────────────────────────
 DEVELOPER WARNING
 ────────────────────────────────
 

@@ -1,44 +1,45 @@
-
 #!/usr/bin/env python3
 """
 FILE: rating_style.py
-VERSION: 1.0
-LAST UPDATED: 2026-02-03
+VERSION: 1.1
+LAST UPDATED: 2026-02-07
 PURPOSE:
-Central rating semantics and rendering for BiasLens.
+Central rating presentation and deterministic score↔stars mapping for BiasLens.
 
 Responsibilities:
-- Define locked star/color/meaning semantics.
+- Render user-facing rating tokens consistently (dot + stars, optional meaning).
 - Provide deterministic score ↔ stars mapping.
-- Render user-facing rating tokens consistently.
 
 LOCKS:
-- Star meanings are constitution-level and must remain aligned with
-  enforcers/integrity_objects.STAR_MAP.
+- Star meanings/labels are constitution-level and MUST remain aligned with
+  enforcers/integrity_objects.STAR_MAP (which is derived from constants/integrity_labels).
 - Score→stars bands are locked unless a deliberate migration occurs.
-- This file is the single source of truth for rating presentation.
-"""
 
+IMPORTANT:
+- This module must NOT embed star meaning strings (prevents label drift).
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from enforcers.integrity_objects import STAR_MAP
+
 
 # ─────────────────────────────────────────────────────────────
 # rating_style.py
 # PURPOSE:
 # - Render user-facing rating tokens consistently:
-#     dot + stars  (and optionally meaning)
+#     dot + stars (and optionally meaning)
 # - Provide internal 0–100 scoring ↔ stars mapping.
 #
-# LOCKED SEMANTICS (user-facing):
-#   1★ = 🔴 Severe integrity failures
-#   2★ = 🟠 Major problems
-#   3★ = 🟡 Mixed / variable
-#   4★ = 🟢 Strong
-#   5★ = 🔵 Exceptional
+# LOCKED PRESENTATION (user-facing):
+#   1★ = 🔴
+#   2★ = 🟠
+#   3★ = 🟡
+#   4★ = 🟢
+#   5★ = 🔵
 #
 # SCORE→STARS BANDS (internal, locked for now):
 #   0–19   -> 1★
@@ -48,6 +49,12 @@ from typing import Dict, Optional
 #   80–100 -> 5★
 # ─────────────────────────────────────────────────────────────
 
+
+def _meaning_map_from_star_map() -> Dict[int, str]:
+    # STAR_MAP: {stars: (label, color)}; we only want label here.
+    return {int(st): str(lbl) for st, (lbl, _color) in STAR_MAP.items()}
+
+
 @dataclass(frozen=True)
 class RatingStyle:
     star: str = "⭐"
@@ -55,7 +62,7 @@ class RatingStyle:
     # Color circle by star count (locked)
     circle_map: Dict[int, str] = None  # type: ignore[assignment]
 
-    # Meaning by star count (locked)
+    # Meaning by star count (derived; do not embed strings)
     meaning_map: Dict[int, str] = None  # type: ignore[assignment]
 
     # Render controls
@@ -72,17 +79,7 @@ class RatingStyle:
             )
 
         if self.meaning_map is None:
-            object.__setattr__(
-                self,
-                "meaning_map",
-                {
-                    1: "Severe integrity failures",
-                    2: "Major problems",
-                    3: "Mixed / variable",
-                    4: "Strong",
-                    5: "Exceptional",
-                },
-            )
+            object.__setattr__(self, "meaning_map", _meaning_map_from_star_map())
 
 
 DEFAULT_STYLE = RatingStyle()
@@ -154,18 +151,15 @@ def render_rating(
     """
     Renders:
       - default:     🔴 ⭐
-      - meaning on:  🔴 ⭐ — Severe integrity failures
+      - meaning on:  🔴 ⭐ — <canonical long-form label>
 
-    `meaning` overrides meaning_map if provided.
+    `meaning` overrides canonical meaning_map if provided.
     """
     r = clamp_rating(rating)
     stars = style.star * r
     dot = style.circle_map.get(r, "")
 
-    if style.dot_first:
-        token = f"{dot} {stars}".strip()
-    else:
-        token = f"{stars} {dot}".strip()
+    token = f"{dot} {stars}".strip() if style.dot_first else f"{stars} {dot}".strip()
 
     use_meaning = style.show_meaning if show_meaning is None else bool(show_meaning)
     if not use_meaning:

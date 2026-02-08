@@ -1,25 +1,28 @@
-
-
 #!/usr/bin/env python3
 """
 FILE: renderer.py
-VERSION: 0.4
-LAST UPDATED: 2026-02-03
+VERSION: 0.6
+LAST UPDATED: 2026-02-07
 PURPOSE:
-Renders BiasLens output into readable Markdown for Streamlit.
+Render BiasLens output into readable Markdown for Streamlit.
 
 Supports TWO schemas:
-A) Legacy/stub schema (current deployed JSON):
-   - run_metadata, facts_layer, claim_registry, evidence_bank, metrics, report_pack, etc.
+A) Stub/MVP schema (current JSON):
+   - run_metadata, facts_layer, claim_registry (dict), evidence_bank, metrics, report_pack, etc.
 
 B) Brick-7 pack schema (future/alternate):
-   - article_layer, claim_registry (list), claim_evaluations, headline_body_delta (dict), reader_interpretation, etc.
+   - article_layer, claim_registry (list), headline_body_delta (dict), reader_interpretation, etc.
 
 Renderer goals (current step):
 - Make the site feel real NOW, while staying integrity-safe.
-- Surface "pillar sockets" status in Overview.
-- Always expose pillar objects in Scholar view for debugging.
-- In Reader view, mention pillars only when meaningful; for MVP, be explicit about "not run".
+- Surface pillar/socket run-status in Overview.
+- Always expose pillar/socket raw objects in Scholar view for debugging.
+- Reader view stays conservative: mention pillars only when meaningful; for MVP be explicit about "not run".
+
+2026-02-07 ARCHITECTURE UPDATE:
+- Timeline engine outputs are surfaced (Overview + Scholar) via renderer_sockets.py
+- Dormant socket surfaced: article_layer.framing_evidence_alignment (status: not_run unless run)
+- Scholar includes a small Pillar Index to prevent silent drift
 """
 
 from __future__ import annotations
@@ -31,10 +34,16 @@ from rating_style import render_rating, score_to_stars
 from schema_names import K
 
 from reader_brain import build_reader_in_depth
+from renderer_sockets import (
+    build_article_sockets,
+    append_overview_timeline,
+    append_scholar_narrative_sockets,
+)
 
 # ─────────────────────────────────────────────────────────────
-# small helpers
+# Small helpers (type-safe, schema-tolerant)
 # ─────────────────────────────────────────────────────────────
+
 
 def _d(x: Any) -> Dict[str, Any]:
     return x if isinstance(x, dict) else {}
@@ -57,6 +66,34 @@ def _bullet(lines: List[str], text: str) -> None:
     lines.append(f"- {text}")
 
 
+def _rating_rank(rating: Any) -> int:
+    try:
+        r = int(rating)
+    except Exception:
+        r = 3
+    return max(1, min(5, r))
+
+
+def _count_by_key(items: List[Dict[str, Any]], key: str) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        v = _s(it.get(key)) or "(missing)"
+        counts[v] = counts.get(v, 0) + 1
+    return counts
+
+
+def _fmt_counts(counts: Dict[str, int]) -> str:
+    parts = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join([f"{k}={v}" for k, v in parts]) if parts else "(none)"
+
+
+# ─────────────────────────────────────────────────────────────
+# Schema detection + title/url extraction
+# ─────────────────────────────────────────────────────────────
+
+
 def _is_stub_schema(pack: Dict[str, Any]) -> bool:
     return K.REPORT_PACK in pack and K.RUN_METADATA in pack and K.FACTS_LAYER in pack
 
@@ -73,12 +110,9 @@ def _title_url_from_brick7(pack: Dict[str, Any]) -> Tuple[str, str]:
     return _s(pack.get("source_title")) or "BiasLens Report", _s(pack.get("source_url"))
 
 
-def _rating_rank(rating: Any) -> int:
-    try:
-        r = int(rating)
-    except Exception:
-        r = 3
-    return max(1, min(5, r))
+# ─────────────────────────────────────────────────────────────
+# Evidence lookup (for quick quote surfacing)
+# ─────────────────────────────────────────────────────────────
 
 
 def _evidence_lookup(pack: Dict[str, Any]) -> Dict[str, str]:
@@ -92,65 +126,102 @@ def _evidence_lookup(pack: Dict[str, Any]) -> Dict[str, str]:
     return lookup
 
 
+# ─────────────────────────────────────────────────────────────
+# Pillar/socket status (schema-tolerant, integrity-safe)
+# ─────────────────────────────────────────────────────────────
+
+
 def _pillar_status_from_obj(obj: Any) -> str:
     """
     Conservative, schema-tolerant:
-    - presentation_integrity has K.MODULE_STATUS by contract (run|not_run)
-    - other pillar sockets may or may not include status (treat missing as not_run)
+    - Uses K.MODULE_STATUS when present (run|not_run)
+    - Falls back to legacy K.STATUS (read-only; never emit K.STATUS in new code)
+    - Missing/unknown => not_run
     """
     if not isinstance(obj, dict):
-        return "not_run"
-    st = obj.get(K.MODULE_STATUS) or obj.get(K.STATUS)
+        return K.MODULE_NOT_RUN
+
+    st = obj.get(K.MODULE_STATUS) or obj.get(K.STATUS)  # legacy read-only support
     st = _s(st).lower()
-    if st in ("run", "not_run"):
+    if st in (K.MODULE_RUN, K.MODULE_NOT_RUN):
         return st
-    return "not_run"
-
-
-def _stub_pillar_statuses(pack: Dict[str, Any]) -> Dict[str, str]:
-    facts_layer = _d(pack.get(K.FACTS_LAYER))
-    article_layer = _d(pack.get(K.ARTICLE_LAYER))
-
-    reality_alignment = facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)
-    premise_independence = article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)
-    presentation_integrity = article_layer.get(K.PRESENTATION_INTEGRITY)
-
-    return {
-        "Reality Alignment": _pillar_status_from_obj(reality_alignment),
-        "Reasoning Integrity (Premise Independence)": _pillar_status_from_obj(premise_independence),
-        "Presentation Integrity": _pillar_status_from_obj(presentation_integrity),
-    }
+    return K.MODULE_NOT_RUN
 
 
 def _format_status(st: str) -> str:
     st = (st or "").strip().lower()
-    if st == "run":
-        return "✅ run"
-    return "⏳ not_run"
+    return "✅ run" if st == K.MODULE_RUN else "⏳ not_run"
 
 
-def _count_by_key(items: List[Dict[str, Any]], key: str) -> Dict[str, int]:
-    counts: Dict[str, int] = {}
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        v = _s(it.get(key)) or "(missing)"
-        counts[v] = counts.get(v, 0) + 1
-    return counts
+def _stub_pillar_statuses(pack: Dict[str, Any], sockets: Dict[str, Any]) -> Dict[str, str]:
+    facts_layer = _d(pack.get(K.FACTS_LAYER))
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+
+    return {
+        "Reality Alignment": _pillar_status_from_obj(facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)),
+        "Reasoning Integrity (Premise Independence)": _pillar_status_from_obj(article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)),
+        "Presentation Integrity": _pillar_status_from_obj(article_layer.get(K.PRESENTATION_INTEGRITY)),
+        "Timeline (Narrative Structure)": _s(sockets.get("timeline_status")) or K.MODULE_NOT_RUN,
+        "Framing ↔ Evidence Alignment": _s(sockets.get("framing_alignment_status")) or K.MODULE_NOT_RUN,
+    }
 
 
-def _fmt_counts(counts: Dict[str, int]) -> str:
-    # stable order: descending count, then key
-    parts = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return ", ".join([f"{k}={v}" for k, v in parts]) if parts else "(none)"
+def _append_overview_pillar_block(lines: List[str], pillar_status: Dict[str, str]) -> None:
+    lines.append("## Pillars status")
+    _bullet(lines, f"Reality Alignment: **{_format_status(pillar_status['Reality Alignment'])}**")
+    _bullet(lines, f"Reasoning Integrity (Premise Independence): **{_format_status(pillar_status['Reasoning Integrity (Premise Independence)'])}**")
+    _bullet(lines, f"Presentation Integrity: **{_format_status(pillar_status['Presentation Integrity'])}**")
+    _bullet(lines, f"Timeline (Narrative Structure): **{_format_status(pillar_status['Timeline (Narrative Structure)'])}**")
+    _bullet(lines, f"Framing ↔ Evidence Alignment: **{_format_status(pillar_status['Framing ↔ Evidence Alignment'])}**")
+    lines.append("")
+
+
+def _append_scholar_pillar_index(lines: List[str], pack: Dict[str, Any], sockets: Dict[str, Any]) -> None:
+    facts_layer = _d(pack.get(K.FACTS_LAYER))
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+
+    lines.append("## Pillar Index (status)")
+    _bullet(lines, f"Reality Alignment: **{_format_status(_pillar_status_from_obj(facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)))}**")
+    _bullet(lines, f"Reasoning Integrity (Premise Independence): **{_format_status(_pillar_status_from_obj(article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)))}**")
+    _bullet(lines, f"Presentation Integrity: **{_format_status(_pillar_status_from_obj(article_layer.get(K.PRESENTATION_INTEGRITY)))}**")
+    _bullet(lines, f"Timeline (Narrative Structure): **{_format_status(_s(sockets.get('timeline_status')))}**")
+    _bullet(lines, f"Framing ↔ Evidence Alignment: **{_format_status(_s(sockets.get('framing_alignment_status')))}**")
+    lines.append("")
 
 
 # ─────────────────────────────────────────────────────────────
-# LEGACY/STUB schema rendering
+# Integrity/grounding object lookup (naming drift tolerant)
 # ─────────────────────────────────────────────────────────────
+
+
+def _claim_integrity_obj(pack: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Compatibility shim: claim integrity / grounding object has drifted in naming.
+    We only read what exists; missing => {}.
+    """
+    cr = _d(pack.get(K.CLAIM_REGISTRY))
+
+    key_candidates: List[str] = []
+    for attr in ("CLAIM_GROUNDING", "CLAIM_INTEGRITY", "claim_grounding", "claim_integrity"):
+        if hasattr(K, attr):
+            key_candidates.append(getattr(K, attr))
+    key_candidates.extend(["claim_grounding", "claim_integrity"])
+
+    for k in key_candidates:
+        obj = cr.get(k)
+        if isinstance(obj, dict) and obj:
+            return obj
+    return {}
+
+
+# ─────────────────────────────────────────────────────────────
+# STUB/MVP schema rendering
+# ─────────────────────────────────────────────────────────────
+
 
 def _stub_overview(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_stub(pack)
+
     report_pack = _d(pack.get(K.REPORT_PACK))
     onep = _s(report_pack.get(K.SUMMARY_ONE_PARAGRAPH)) or "(No summary.)"
 
@@ -166,13 +237,20 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
 
     evidence = _evidence_lookup(pack)
 
-    top = items[:]
-    top.sort(key=lambda x: _rating_rank(_d(x).get(K.RATING)), reverse=True)
+    # Sort findings by rating (desc), take top 5
+    top = [_d(x) for x in items]
+    top.sort(key=lambda x: _rating_rank(x.get(K.RATING)), reverse=True)
     top = top[:5]
 
     limits = _l(pack.get(K.DECLARED_LIMITS))
 
-    pillar_status = _stub_pillar_statuses(pack)
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+    sockets = build_article_sockets(
+        article_layer,
+        module_status_key=K.MODULE_STATUS,
+        legacy_status_key=K.STATUS,  # legacy read-only support
+    )
+    pillar_status = _stub_pillar_statuses(pack, sockets)
 
     lines: List[str] = []
     lines.append(f"# 🛡️ BiasLens Overview — {title}")
@@ -183,26 +261,26 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     lines.append(onep)
     lines.append("")
 
-    lines.append("## Pillars status")
-    _bullet(lines, f"Reality Alignment: **{_format_status(pillar_status['Reality Alignment'])}**")
-    _bullet(lines, f"Reasoning Integrity (Premise Independence): **{_format_status(pillar_status['Reasoning Integrity (Premise Independence)'])}**")
-    _bullet(lines, f"Presentation Integrity: **{_format_status(pillar_status['Presentation Integrity'])}**")
-    lines.append("")
+    _append_overview_pillar_block(lines, pillar_status)
+
+    # Timeline mini-surface (Overview-only; emitted objects only)
+    append_overview_timeline(lines, sockets)
 
     lines.append("## Top findings (evidence-cited)")
     if top:
-        for it in top:
-            itd = _d(it)
+        for itd in top:
             rating = itd.get(K.RATING, 3)
             claim_id = _s(itd.get(K.CLAIM_ID))
             txt = _s(itd.get(K.FINDING_TEXT))
             eids = _l(itd.get(K.EVIDENCE_EIDS))
             eid_str = ", ".join([_s(e) for e in eids if _s(e)])
+
             quote = ""
             if eids:
                 q = evidence.get(_s(eids[0]), "")
                 if q:
                     quote = _clip(q, 180)
+
             lines.append(f"- {render_rating(rating)} **{claim_id or 'Claim'}** — {txt}")
             if eid_str:
                 lines.append(f"  - evidence: `{eid_str}`")
@@ -211,18 +289,14 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     else:
         _bullet(lines, "No findings were emitted in this run.")
 
-    # ─────────────────────────────────────────────────────────
-    # Claim Integrity snapshot (NEW)
-    # ─────────────────────────────────────────────────────────
-    claim_grounding = _d(_d(pack.get(K.CLAIM_REGISTRY)).get(K.claim_grounding))
-    if claim_grounding:
-        stars = claim_grounding.get(K.STARS, 3)
+    # Claim Integrity snapshot (best-effort)
+    ci = _claim_integrity_obj(pack)
+    if ci:
+        stars = ci.get(K.STARS, 3)
         lines.append("")
         lines.append("## Claim Integrity")
         _bullet(lines, f"Rating: **{render_rating(stars)}**")
-
-        bullets = claim_grounding.get(K.RATIONALE_BULLETS, [])
-        for b in bullets[:3]:
+        for b in _l(ci.get(K.RATIONALE_BULLETS))[:3]:
             _bullet(lines, _clip(_s(b), 160))
 
     lines.append("")
@@ -237,8 +311,7 @@ def _stub_overview(pack: Dict[str, Any]) -> str:
     lines.append("## Declared limits / epistemic humility")
     if limits:
         for lim in limits[:5]:
-            ld = _d(lim)
-            _bullet(lines, _s(ld.get(K.STATEMENT)) or "(limit statement)")
+            _bullet(lines, _s(_d(lim).get(K.STATEMENT)) or "(limit statement)")
     else:
         _bullet(lines, "No limits declared.")
 
@@ -269,7 +342,10 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
     hi_stakes = [c for c in claims if _s(_d(c).get(K.STAKES)).lower() == "high"]
 
     guide = _s(report_pack.get(K.READER_INTERPRETATION_GUIDE))
-    pillar_status = _stub_pillar_statuses(pack)
+
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+    sockets = build_article_sockets(article_layer, module_status_key=K.MODULE_STATUS, legacy_status_key=K.STATUS)
+    pillar_status = _stub_pillar_statuses(pack, sockets)
 
     lines: List[str] = []
     lines.append(f"# 🧭 Reader In-Depth — {title}")
@@ -281,7 +357,7 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("## What kind of piece is this (as a reader experience)?")
 
-    if density_label in ("low",) or (ratio is not None and isinstance(ratio, (int, float)) and ratio < 0.8):
+    if density_label in ("low",) or (isinstance(ratio, (int, float)) and ratio < 0.8):
         _bullet(lines, "This reads like **assertion-forward reporting**: claims are presented, but the visible evidence footprint is relatively thin.")
     else:
         _bullet(lines, "This reads like **quote-driven reporting**: multiple claims are anchored to quoted passages, but deeper verification may still be limited.")
@@ -310,12 +386,12 @@ def _stub_reader_in_depth(pack: Dict[str, Any]) -> str:
     pi = pillar_status["Reasoning Integrity (Premise Independence)"]
     pr = pillar_status["Presentation Integrity"]
 
-    if ra != "run" or pi != "run":
+    if ra != K.MODULE_RUN or pi != K.MODULE_RUN:
         lines.append(
             "This build did **not** run the two core analysis pillars yet (**Reality Alignment** and **Reasoning Integrity / Premise Independence**). "
             "So treat extracted claims as an **evidence index** (what was said), not as a determination of what is true or well-supported."
         )
-    if pr != "run":
+    if pr != K.MODULE_RUN:
         lines.append(
             "Presentation Integrity was also **not run** here, so headline/body effects should be treated as unassessed unless explicitly flagged."
         )
@@ -349,10 +425,11 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
 
     cr = _d(pack.get(K.CLAIM_REGISTRY))
     claims = _l(cr.get(K.CLAIMS))
+
     claim_evals = _d(cr.get(K.CLAIM_EVALUATIONS))
     ce_items = _l(claim_evals.get(K.ITEMS))
     ce_status = _s(claim_evals.get(K.MODULE_STATUS) or claim_evals.get(K.STATUS))
-    ce_score = claim_evals.get("score_0_100", None)
+    ce_score = claim_evals.get(K.SCORE_0_100, claim_evals.get("score_0_100", None))
 
     report_pack = _d(pack.get(K.REPORT_PACK))
     findings_pack = _d(report_pack.get(K.FINDINGS_PACK))
@@ -361,11 +438,15 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
     facts_layer = _d(pack.get(K.FACTS_LAYER))
     article_layer = _d(pack.get(K.ARTICLE_LAYER))
 
+    sockets = build_article_sockets(article_layer, module_status_key=K.MODULE_STATUS, legacy_status_key=K.STATUS)
+
     lines: List[str] = []
     lines.append(f"# 🧪 Scholar In-Depth — {title}")
     if url:
         lines.append(f"*Source:* {url}")
     lines.append("")
+
+    _append_scholar_pillar_index(lines, pack, sockets)
 
     lines.append("## Pillars (raw objects)")
     lines.append("### facts_layer.reality_alignment_analysis")
@@ -384,6 +465,9 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
     lines.append("```")
     lines.append("")
 
+    lines.append("## Narrative sockets (raw objects)")
+    append_scholar_narrative_sockets(lines, sockets)
+
     lines.append("## Evidence bank (verbatim excerpts)")
     for eid, quote in list(evidence.items())[:25]:
         lines.append(f"- **{eid}**: {quote}")
@@ -398,30 +482,25 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
         )
         lines.append(f"  - evidence_eids: {cd.get(K.EVIDENCE_EIDS, [])}")
 
-    # ─────────────────────────────────────────────────────────
-    # NEW: Claim Evaluation Engine (Pass B v0.1)
-    # ─────────────────────────────────────────────────────────
     lines.append("")
     lines.append("## Claim Evaluation Engine (Pass B v0.1)")
     if claim_evals:
         _bullet(lines, f"Status: **{ce_status or 'n/a'}**")
         if isinstance(ce_score, (int, float)):
-            stars = score_to_stars(float(ce_score))
+            stars = score_to_stars(int(ce_score))
             _bullet(lines, f"Score (0–100): **{ce_score}**  →  {render_rating(stars)}")
         else:
             _bullet(lines, "Score (0–100): (not provided)")
 
         if ce_items:
-            # counts
             typed = _count_by_key([_d(x) for x in ce_items], K.ISSUE_TYPE)
             sevd = _count_by_key([_d(x) for x in ce_items], K.SEVERITY)
-            _bullet(lines, f"Issue types: { _fmt_counts(typed) }")
-            _bullet(lines, f"Severities: { _fmt_counts(sevd) }")
+            _bullet(lines, f"Issue types: {_fmt_counts(typed)}")
+            _bullet(lines, f"Severities: {_fmt_counts(sevd)}")
 
             lines.append("")
             lines.append("### Top flagged items")
-            # sort: high -> elevated -> moderate -> low (stable)
-            sev_rank = {"high": 4, "elevated": 3, "moderate": 2, "low": 1}
+            sev_rank = {K.SEV_HIGH: 4, K.SEV_ELEVATED: 3, K.SEV_MODERATE: 2, K.SEV_LOW: 1}
             sorted_items = sorted(
                 [_d(x) for x in ce_items],
                 key=lambda it: (sev_rank.get(_s(it.get(K.SEVERITY)).lower(), 0), _s(it.get(K.CLAIM_REF))),
@@ -436,6 +515,7 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
                 expl = _s(it.get(K.EXPLANATION)) or ""
                 eids = _l(it.get(K.EVIDENCE_EIDS))
                 eid_str = ", ".join([_s(e) for e in eids if _s(e)])
+
                 quote = ""
                 if eids:
                     q = evidence.get(_s(eids[0]), "")
@@ -453,8 +533,6 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
             _bullet(lines, "No claim evaluation items emitted.")
     else:
         _bullet(lines, "claim_registry.claim_evaluations not present in this run.")
-
-    # ─────────────────────────────────────────────────────────
 
     lines.append("")
     lines.append("## Findings pack (current run)")
@@ -476,25 +554,30 @@ def _stub_scholar_in_depth(pack: Dict[str, Any]) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# BRICK-7 schema rendering (kept for forward compatibility)
+# BRICK-7 schema rendering (forward-compat)
 # ─────────────────────────────────────────────────────────────
+
 
 def _brick7_overview(pack: Dict[str, Any]) -> str:
     title, url = _title_url_from_brick7(pack)
-    article = _d(pack.get(K.ARTICLE_LAYER))
-    onep = _s(article.get("one_paragraph_summary")) or "(No summary.)"
+
+    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+    onep = _s(article_layer.get("one_paragraph_summary")) or "(No summary.)"
 
     evidence_bank = _l(pack.get(K.EVIDENCE_BANK))
     claim_registry = _l(pack.get(K.CLAIM_REGISTRY))
     hbd = _d(pack.get(K.HEADLINE_BODY_DELTA))
-
-    # pillar sockets (best-effort)
     facts_layer = _d(pack.get(K.FACTS_LAYER))
-    article_layer = _d(pack.get(K.ARTICLE_LAYER))
+
+    sockets = build_article_sockets(article_layer, module_status_key=K.MODULE_STATUS, legacy_status_key=K.STATUS)
+
+    # Reuse the same labels/keys as stub pillar block (but compute from Brick7 objects)
     pillar_status = {
         "Reality Alignment": _pillar_status_from_obj(facts_layer.get(K.REALITY_ALIGNMENT_ANALYSIS)),
         "Reasoning Integrity (Premise Independence)": _pillar_status_from_obj(article_layer.get(K.PREMISE_INDEPENDENCE_ANALYSIS)),
         "Presentation Integrity": _pillar_status_from_obj(article_layer.get(K.PRESENTATION_INTEGRITY)),
+        "Timeline (Narrative Structure)": _s(sockets.get("timeline_status")) or K.MODULE_NOT_RUN,
+        "Framing ↔ Evidence Alignment": _s(sockets.get("framing_alignment_status")) or K.MODULE_NOT_RUN,
     }
 
     lines: List[str] = []
@@ -506,19 +589,18 @@ def _brick7_overview(pack: Dict[str, Any]) -> str:
     lines.append(onep)
     lines.append("")
 
-    lines.append("## Pillars status")
-    _bullet(lines, f"Reality Alignment: **{_format_status(pillar_status['Reality Alignment'])}**")
-    _bullet(lines, f"Reasoning Integrity (Premise Independence): **{_format_status(pillar_status['Reasoning Integrity (Premise Independence)'])}**")
-    _bullet(lines, f"Presentation Integrity: **{_format_status(pillar_status['Presentation Integrity'])}**")
-    lines.append("")
+    _append_overview_pillar_block(lines, pillar_status)
+    append_overview_timeline(lines, sockets)
 
     lines.append("## What was analyzed")
     _bullet(lines, f"Evidence quotes extracted: **{len(evidence_bank)}**")
     _bullet(lines, f"Claims extracted: **{len(claim_registry)}**")
     lines.append("")
+
     lines.append("## Headline–Body Delta")
     _bullet(lines, f"Headline: **{_s(hbd.get('headline')) or '(not provided)'}**")
     _bullet(lines, f"Body qualifiers: {_s(hbd.get('body_key_qualifiers')) or '(unknown)'}")
+
     return "\n".join(lines)
 
 
@@ -564,6 +646,7 @@ def _brick7_scholar(pack: Dict[str, Any]) -> str:
 # ─────────────────────────────────────────────────────────────
 # Public API used by streamlit_app.py
 # ─────────────────────────────────────────────────────────────
+
 
 def render_overview(pack: Dict[str, Any]) -> str:
     return _stub_overview(pack) if _is_stub_schema(pack) else _brick7_overview(pack)
