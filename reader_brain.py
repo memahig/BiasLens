@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from rating_style import render_rating
+from constants.rating_semantics import render_rating
 from schema_names import K
 
 from reader_phrasebook import (

@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from schema_names import K
-from rating_style import score_to_stars, stars_to_score_midpoint
+from constants.rating_semantics import score_to_stars, stars_to_score_midpoint
 from modules.claims.claim_evaluator import run_claim_evaluator
 from modules.timeline.timeline_engine import compute_timeline
 

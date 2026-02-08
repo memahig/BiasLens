@@ -27,7 +27,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from rating_style import score_to_stars
+from constants.rating_semantics import score_to_stars
+
 
 from schema_names import K
 

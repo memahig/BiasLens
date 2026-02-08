@@ -17,7 +17,7 @@ NEW (safe, optional):
 
 IMPORTANT (2026-02-07 LOCK):
 - Public-facing star labels MUST be long-form (e.g., "Major Integrity Problems").
-- STAR_MAP is DERIVED from constants.integrity_labels.INTEGRITY_STAR_MAP
+- STAR_MAP is DERIVED from constants.rating_semantics (single source of truth).
   (single source of truth). Do not embed labels here.
 """
 
@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from schema_names import K
-from constants.rating_semantics import STAR_MAP_TUPLES
+from constants.rating_semantics import STAR_MAP_TUPLES, score_to_stars
 
 
 # ─────────────────────────────────────────────────────────────
@@ -44,28 +44,6 @@ _SCORE_KEY = K.SCORE_0_100
 
 # If True: when score_0_100 is present, enforce that stars match score bands.
 _ENFORCE_SCORE_TO_STARS = True
-
-
-def _score_to_stars(score_0_100: int) -> int:
-    """
-    Default internal mapping (engine-facing), consistent with rating_style.py.
-
-      0–19   -> 1★
-      20–39  -> 2★
-      40–59  -> 3★
-      60–79  -> 4★
-      80–100 -> 5★
-    """
-    s = int(score_0_100)
-    if s < 20:
-        return 1
-    if s < 40:
-        return 2
-    if s < 60:
-        return 3
-    if s < 80:
-        return 4
-    return 5
 
 
 def enforce_integrity_objects(out: Dict[str, Any]) -> List[str]:
@@ -177,7 +155,7 @@ def _validate_integrity_object(
                 errs.append(f"{ctx}.{_SCORE_KEY} must be within 0..100 if present")
 
             if _ENFORCE_SCORE_TO_STARS:
-                exp_stars = _score_to_stars(score)
+                exp_stars = score_to_stars(score)
                 if exp_stars != stars:
                     errs.append(
                         f"{ctx} stars mismatch vs {_SCORE_KEY} (score={score} implies {exp_stars}★)"
