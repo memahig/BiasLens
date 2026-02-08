@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Tuple
 
-from rating_style import render_rating, score_to_stars
+from constants.rating_semantics import render_rating, score_to_stars
 from schema_names import K
 
 from reader_brain import build_reader_in_depth

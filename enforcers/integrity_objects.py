@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from schema_names import K
-from constants.integrity_labels import INTEGRITY_STAR_MAP
+from constants.rating_semantics import STAR_MAP_TUPLES
 
 
 # ─────────────────────────────────────────────────────────────
@@ -35,10 +35,7 @@ from constants.integrity_labels import INTEGRITY_STAR_MAP
 # STAR_MAP remains for legacy compatibility: {stars: (label, color)}
 # ─────────────────────────────────────────────────────────────
 
-STAR_MAP = {
-    int(stars): (meta["label"], meta["color"])
-    for stars, meta in INTEGRITY_STAR_MAP.items()
-}
+STAR_MAP = STAR_MAP_TUPLES
 
 CONF_ALLOWED = {"low", "medium", "high"}
 

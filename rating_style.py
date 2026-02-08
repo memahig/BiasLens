@@ -1,169 +1,19 @@
 #!/usr/bin/env python3
 """
 FILE: rating_style.py
-VERSION: 1.1
+VERSION: 1.2
 LAST UPDATED: 2026-02-07
 PURPOSE:
-Central rating presentation and deterministic score↔stars mapping for BiasLens.
-
-Responsibilities:
-- Render user-facing rating tokens consistently (dot + stars, optional meaning).
-- Provide deterministic score ↔ stars mapping.
-
-LOCKS:
-- Star meanings/labels are constitution-level and MUST remain aligned with
-  enforcers/integrity_objects.STAR_MAP (which is derived from constants/integrity_labels).
-- Score→stars bands are locked unless a deliberate migration occurs.
-
-IMPORTANT:
-- This module must NOT embed star meaning strings (prevents label drift).
+Legacy shim. Canonical rating semantics now live in constants/rating_semantics.py
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Dict, Optional
-
-from enforcers.integrity_objects import STAR_MAP
-
-
-# ─────────────────────────────────────────────────────────────
-# rating_style.py
-# PURPOSE:
-# - Render user-facing rating tokens consistently:
-#     dot + stars (and optionally meaning)
-# - Provide internal 0–100 scoring ↔ stars mapping.
-#
-# LOCKED PRESENTATION (user-facing):
-#   1★ = 🔴
-#   2★ = 🟠
-#   3★ = 🟡
-#   4★ = 🟢
-#   5★ = 🔵
-#
-# SCORE→STARS BANDS (internal, locked for now):
-#   0–19   -> 1★
-#   20–39  -> 2★
-#   40–59  -> 3★
-#   60–79  -> 4★
-#   80–100 -> 5★
-# ─────────────────────────────────────────────────────────────
-
-
-def _meaning_map_from_star_map() -> Dict[int, str]:
-    # STAR_MAP: {stars: (label, color)}; we only want label here.
-    return {int(st): str(lbl) for st, (lbl, _color) in STAR_MAP.items()}
-
-
-@dataclass(frozen=True)
-class RatingStyle:
-    star: str = "⭐"
-
-    # Color circle by star count (locked)
-    circle_map: Dict[int, str] = None  # type: ignore[assignment]
-
-    # Meaning by star count (derived; do not embed strings)
-    meaning_map: Dict[int, str] = None  # type: ignore[assignment]
-
-    # Render controls
-    dot_first: bool = True          # user preference: dot before stars
-    show_meaning: bool = False      # keep "hidden" by default; flip True if desired
-    meaning_sep: str = " — "        # separator between rating token and meaning
-
-    def __post_init__(self) -> None:
-        if self.circle_map is None:
-            object.__setattr__(
-                self,
-                "circle_map",
-                {1: "🔴", 2: "🟠", 3: "🟡", 4: "🟢", 5: "🔵"},
-            )
-
-        if self.meaning_map is None:
-            object.__setattr__(self, "meaning_map", _meaning_map_from_star_map())
-
-
-DEFAULT_STYLE = RatingStyle()
-
-
-# ─────────────────────────────────────────────────────────────
-# Core helpers
-# ─────────────────────────────────────────────────────────────
-
-def clamp_rating(r: int) -> int:
-    try:
-        rr = int(r)
-    except Exception:
-        rr = 3
-    return max(1, min(5, rr))
-
-
-def clamp_score(score_0_100: int) -> int:
-    try:
-        s = int(score_0_100)
-    except Exception:
-        s = 50
-    return max(0, min(100, s))
-
-
-def score_to_stars(score_0_100: int) -> int:
-    """
-    Internal mapping (engine-facing). Bands are currently locked.
-
-      0–19   -> 1★
-      20–39  -> 2★
-      40–59  -> 3★
-      60–79  -> 4★
-      80–100 -> 5★
-    """
-    s = clamp_score(score_0_100)
-    if s < 20:
-        return 1
-    if s < 40:
-        return 2
-    if s < 60:
-        return 3
-    if s < 80:
-        return 4
-    return 5
-
-
-def stars_to_score_midpoint(stars: int) -> int:
-    """
-    Stable midpoint score for a given star band.
-    Ensures score_to_stars(midpoint) == stars.
-    """
-    st = clamp_rating(stars)
-    return {1: 10, 2: 30, 3: 50, 4: 70, 5: 90}[st]
-
-
-def stars_to_score_range(stars: int) -> tuple[int, int]:
-    st = clamp_rating(stars)
-    return {1: (0, 19), 2: (20, 39), 3: (40, 59), 4: (60, 79), 5: (80, 100)}[st]
-
-
-def render_rating(
-    rating: int,
-    *,
-    style: RatingStyle = DEFAULT_STYLE,
-    meaning: Optional[str] = None,
-    show_meaning: Optional[bool] = None,
-) -> str:
-    """
-    Renders:
-      - default:     🔴 ⭐
-      - meaning on:  🔴 ⭐ — <canonical long-form label>
-
-    `meaning` overrides canonical meaning_map if provided.
-    """
-    r = clamp_rating(rating)
-    stars = style.star * r
-    dot = style.circle_map.get(r, "")
-
-    token = f"{dot} {stars}".strip() if style.dot_first else f"{stars} {dot}".strip()
-
-    use_meaning = style.show_meaning if show_meaning is None else bool(show_meaning)
-    if not use_meaning:
-        return token
-
-    m = (meaning or style.meaning_map.get(r, "")).strip()
-    return f"{token}{style.meaning_sep}{m}".strip()
+from constants.rating_semantics import (
+    RatingStyle,
+    DEFAULT_STYLE,
+    clamp_rating,
+    clamp_score,
+    score_to_stars,
+    stars_to_score_midpoint,
+    stars_to_score_range,
+    render_rating,
+)
