@@ -1,10 +1,8 @@
-
-
 #!/usr/bin/env python3
 """
 FILE: enforcers/integrity_objects.py
-VERSION: 0.4
-LAST UPDATED: 2026-02-03
+VERSION: 0.6
+LAST UPDATED: 2026-02-07
 PURPOSE:
 Validate BiasLens integrity objects (normative contract enforcement).
 
@@ -17,8 +15,10 @@ NEW (safe, optional):
 - integrity objects MAY include K.SCORE_0_100 (int 0..100).
 - If present, stars must match the default score bands unless you disable enforcement.
 
-Notes:
-- Unknown extra fields are allowed (ignored) to support telemetry/debug.
+IMPORTANT (2026-02-07 LOCK):
+- Public-facing star labels MUST be long-form (e.g., "Major Integrity Problems").
+- STAR_MAP is DERIVED from constants.integrity_labels.INTEGRITY_STAR_MAP
+  (single source of truth). Do not embed labels here.
 """
 
 from __future__ import annotations
@@ -26,20 +26,18 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from schema_names import K
+from constants.integrity_labels import INTEGRITY_STAR_MAP
 
 
+# ─────────────────────────────────────────────────────────────
 # 🔒 LOCKED: star/color/meaning semantics (project constitution)
-# 1⭐ = 🔴 Severe integrity failures
-# 2⭐⭐ = 🟠 Major problems
-# 3⭐⭐⭐ = 🟡 Mixed / variable
-# 4⭐⭐⭐⭐ = 🟢 Strong
-# 5⭐⭐⭐⭐⭐ = 🔵 Exceptional
+# Derived from canonical long-form INTEGRITY_STAR_MAP.
+# STAR_MAP remains for legacy compatibility: {stars: (label, color)}
+# ─────────────────────────────────────────────────────────────
+
 STAR_MAP = {
-    1: ("Severe integrity failures", "red"),
-    2: ("Major problems", "orange"),
-    3: ("Mixed / variable", "yellow"),
-    4: ("Strong", "green"),
-    5: ("Exceptional", "blue"),
+    int(stars): (meta["label"], meta["color"])
+    for stars, meta in INTEGRITY_STAR_MAP.items()
 }
 
 CONF_ALLOWED = {"low", "medium", "high"}
@@ -167,7 +165,9 @@ def _validate_integrity_object(
         how_ok = isinstance(how, list) and len(how) > 0
         maint_ok = isinstance(maint, list) and len(maint) > 0
         if not (how_ok or (stars5_allow_maintenance and maint_ok)):
-            errs.append(f"{ctx} for 5 stars must include non-empty how_to_improve OR maintenance_notes")
+            errs.append(
+                f"{ctx} for 5 stars must include non-empty how_to_improve OR maintenance_notes"
+            )
 
     # Optional internal score_0_100 (safe + hidden)
     if _SCORE_KEY in obj:
