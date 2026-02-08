@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 FILE: builders/pass_b.py
+VERSION: 0.2
+LAST UPDATED: 2026-02-08
 PURPOSE: Pass B orchestrator (post-Pass-A) — extends a Pass A report pack.
 
 ARCHITECTURE LOCK:
@@ -29,8 +31,10 @@ from modules.claims.claim_evaluator import run_claim_evaluator
 from modules.timeline.timeline_engine import compute_timeline
 
 
-# Single optional field name (allowed by integrity_objects)
-_SCORE_KEY = "score_0_100"
+# ---- robust key resolution (supports legacy lowercase + future uppercase) ----
+_FACT_VERIFICATION_KEY = getattr(K, "FACT_VERIFICATION", getattr(K, "fact_verification", "fact_verification"))
+_CLAIM_GROUNDING_KEY = getattr(K, "CLAIM_GROUNDING", getattr(K, "claim_grounding", "claim_grounding"))
+_SCORE_KEY = getattr(K, "SCORE_0_100", "score_0_100")
 
 
 def _ensure_score_midpoint(integ: Dict[str, Any]) -> None:
@@ -102,12 +106,14 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(pass_a_out, dict):
         raise RuntimeError("Pass B contract violation: input must be a dict.")
 
+    # NOTE: This mutates nested dicts in-place (same as before). If you ever want
+    # a non-mutating Pass B, you’ll need a deep copy (expensive) or a structured copier.
     out = pass_a_out
 
     # 1) Attach midpoint scores to existing integrity objects (stable behavior)
     facts_layer = out.get(K.FACTS_LAYER)
     if isinstance(facts_layer, dict):
-        integ = facts_layer.get(K.fact_verification)
+        integ = facts_layer.get(_FACT_VERIFICATION_KEY)
         if isinstance(integ, dict):
             _ensure_score_midpoint(integ)
 
@@ -123,7 +129,7 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     cr = out.get(K.CLAIM_REGISTRY)
     if isinstance(cr, dict):
         cr[K.CLAIM_EVALUATIONS] = claim_module
-        cr[K.claim_grounding] = _build_claim_grounding(claim_eval=claim_module)
+        cr[_CLAIM_GROUNDING_KEY] = _build_claim_grounding(claim_eval=claim_module)
 
     # 3) Timeline wiring → article_layer.*
     article_layer = out.get(K.ARTICLE_LAYER)
@@ -164,4 +170,3 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     return out
-
