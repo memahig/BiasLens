@@ -29,6 +29,7 @@ from schema_names import K
 from constants.rating_semantics import score_to_stars, stars_to_score_midpoint
 from modules.claims.claim_evaluator import run_claim_evaluator
 from modules.timeline.timeline_engine import compute_timeline
+from modules.omissions.omissions_engine import run_omissions_engine
 
 
 # ---- robust key resolution (supports legacy lowercase + future uppercase) ----
@@ -149,8 +150,12 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         article_layer[K.TIMELINE_EVENTS] = events
         article_layer[K.TIMELINE_SUMMARY] = summary
 
+        # 3b) Systematic Omission (MVP) — absence of expected context only
+        article_layer["systematic_omission"] = run_omissions_engine(out)
+
         # Socket only. No Phase 4 intelligence here.
         article_layer[K.TIMELINE_CONSISTENCY] = {
+
             K.MODULE_STATUS: K.MODULE_RUN,
             "notes": [
                 "Timeline events extracted using weekday and clock anchors.",
