@@ -44,6 +44,68 @@ def _find_span(text: str, quote: str, start_search: int = 0) -> Optional[Tuple[i
 def _normalize_newlines(text: str) -> str:
     return (text or "").replace("\r\n", "\n").replace("\r", "\n")
 
+def next_eid(evidence_bank: List[dict]) -> str:
+    """
+    Return the next sequential EID using the project's canonical E{n} convention.
+    Only trusts existing EIDs that match /^E\\d+$/.
+    """
+    max_n = 0
+    for ev in evidence_bank or []:
+        if not isinstance(ev, dict):
+            continue
+        eid = ev.get(K.EID, "")
+        if isinstance(eid, str) and eid.startswith("E") and eid[1:].isdigit():
+            n = int(eid[1:])
+            if n > max_n:
+                max_n = n
+    return f"E{max_n + 1}"
+
+
+def add_evidence_span(
+    *,
+    evidence_bank: List[dict],
+    full_text: str,
+    start_char: int,
+    end_char: int,
+    why_relevant: str,
+    source_title: str,
+    source_url: Optional[str],
+) -> Optional[str]:
+    """
+    Canonical evidence writer.
+    - Quote is an exact verbatim slice from full_text[start_char:end_char].
+    - Appends a new evidence_bank item with next sequential EID.
+    - Returns the new EID, or None if span invalid/empty.
+    """
+    if not isinstance(start_char, int) or not isinstance(end_char, int):
+        return None
+    if start_char < 0 or end_char <= start_char:
+        return None
+    if end_char > len(full_text):
+        return None
+
+    quote_verbatim = full_text[start_char:end_char]
+    if not quote_verbatim.strip():
+        return None
+
+    eid = next_eid(evidence_bank)
+
+    evidence_bank.append(
+        {
+            K.EID: eid,
+            K.QUOTE: quote_verbatim,
+            K.START_CHAR: start_char,
+            K.END_CHAR: end_char,
+            K.WHY_RELEVANT: why_relevant,
+            K.SOURCE: {
+                K.TYPE: "url" if (source_url or "").strip() else "text",
+                K.TITLE: source_title or "",
+                K.URL: (source_url or ""),
+            },
+        }
+    )
+    return eid
+
 
 def build_evidence_bank(
     text: str,
@@ -74,28 +136,18 @@ def build_evidence_bank(
 
     bank: List[dict] = []
     cursor = 0
-    eid_n = 1
 
     def _emit(start: int, end: int, why: str) -> None:
-        nonlocal eid_n, bank
-        quote_verbatim = raw[start:end]
-        if not quote_verbatim.strip():
-            return
-        bank.append(
-            {
-                K.EID: f"E{eid_n}",
-                K.QUOTE: quote_verbatim,
-                K.START_CHAR: start,
-                K.END_CHAR: end,
-                K.WHY_RELEVANT: why,
-                K.SOURCE: {
-                    K.TYPE: "url" if (source_url or "").strip() else "text",
-                    K.TITLE: source_title or "",
-                    K.URL: (source_url or ""),
-                },
-            }
+        add_evidence_span(
+            evidence_bank=bank,
+            full_text=raw,
+            start_char=start,
+            end_char=end,
+            why_relevant=why,
+            source_title=source_title,
+            source_url=source_url,
         )
-        eid_n += 1
+
 
     # -----------------------------
     # 1) Paragraph blocks first

@@ -1,9 +1,8 @@
-
 #!/usr/bin/env python3
 """
 FILE: schema_names.py
-VERSION: 0.3
-LAST UPDATED: 2026-02-02
+VERSION: 0.4
+LAST UPDATED: 2026-02-11
 PURPOSE: Central key registry for BiasLens JSON schema fields (string constants).
 
 Notes:
@@ -36,7 +35,6 @@ class K:
     REALITY_ALIGNMENT_ANALYSIS = "reality_alignment_analysis"
     FRAMING_EVIDENCE_ALIGNMENT = "framing_evidence_alignment"
 
-
     # --- premise independence fields ---
     INDEPENDENCE_LEVEL = "independence_level"
     PRIMARY_PREMISES = "primary_premises"
@@ -52,9 +50,59 @@ class K:
     CONTESTATION_LEVEL = "contestation_level"
     STABILITY_RATIONALE = "stability_rationale"
 
-    # --- run_metadata ---
+    # --- run_metadata (INTERNAL / not user-facing) ---
+    OMISSION_CANDIDATES_STRUCTURAL = "omission_candidates_structural"
+    OMISSION_CANDIDATES_INFERENTIAL = "omission_candidates_inferential"
+    OMISSION_CANDIDATES_INTERPRETIVE = "omission_candidates_interpretive"
+    OMISSION_FINDER_NOTES = "omission_finder_notes"
+
     MODE = "mode"
     SOURCE_TYPE = "source_type"
+
+    # --- omission candidate item (INTERNAL / evaluator input) ---
+    OMISSION_CANDIDATE_ID = "candidate_id"
+    DETECTOR_ID = "detector_id"
+    DETECTOR_LAYER = "detector_layer"  # structural | inferential | interpretive
+    HYPOTHESIS_TYPE = "hypothesis_type"
+    TRIGGER_SUMMARY = "trigger_summary"
+    EXPECTED_MISSING = "expected_missing"
+    IMPACT_HYPOTHESIS = "impact_hypothesis"
+
+    # Evidence anchoring for candidates (Option A):
+    # - Use K.EVIDENCE_EIDS for all EIDs (trigger + context).
+    # - Use K.EVIDENCE_ROLES to label which EID is trigger vs context.
+    EVIDENCE_ROLES = "evidence_roles"  # map: eid -> role
+    EVID_ROLE_TRIGGER = "trigger"
+    EVID_ROLE_CONTEXT = "context"
+
+    MISSING_PARAMETER_TYPES = "missing_parameter_types"
+
+    SCOPE_HINT = "scope_hint"
+    SCOPE_LOCAL = "local"
+    SCOPE_PARAGRAPH = "paragraph"
+    SCOPE_ARTICLE = "article"
+
+    STAKES_HINT = "stakes_hint"
+    STAKES_LOW = "low"
+    STAKES_MODERATE = "moderate"
+    STAKES_ELEVATED = "elevated"
+    STAKES_HIGH = "high"
+
+    DETECTOR_CONFIDENCE = "detector_confidence"
+    CANDIDATE_NOTES = "candidate_notes"
+    EXTRACTED_SLOTS = "extracted_slots"
+
+    # --- standardized missing_parameter_types vocabulary (canonical) ---
+    MPT_BASELINE = "baseline"
+    MPT_DENOMINATOR = "denominator"
+    MPT_COMPARATOR_CLASS = "comparator_class"
+    MPT_TIME_WINDOW = "time_window"
+    MPT_ABSOLUTE_VALUE = "absolute_value"
+    MPT_POPULATION_SCOPE = "population_scope"
+    MPT_DEFINITION = "definition"
+    MPT_MECHANISM = "mechanism"
+    MPT_EVIDENCE_TYPE = "evidence_type"
+    MPT_SOURCE_PROVENANCE = "source_provenance"
 
     # --- evidence_bank item ---
     EID = "eid"
@@ -90,7 +138,6 @@ class K:
     VERDICT_NOT_FOUND = "not_found"
     VERDICT_UNCHECKABLE = "uncheckable"
 
-
     # --- claim_registry ---
     CLAIMS = "claims"
     CLAIM_ID = "claim_id"
@@ -104,7 +151,6 @@ class K:
     BODY_TEXT = "body_text"
     SOURCE_ID = "source_id"
     QUOTE_VERBATIM = "quote_verbatim"
-
 
     # --- metrics ---
     EVIDENCE_DENSITY = "evidence_density"
@@ -130,7 +176,6 @@ class K:
 
     SEARCH_SCOPE = "search_scope"
     RESULT = "result"
-
 
     # --- declared_limits ---
     LIMIT_ID = "limit_id"
@@ -164,10 +209,7 @@ class K:
     # --- timeline (Pass B / Article Layer) ---
     TIMELINE_EVENTS = "timeline_events"
     TIMELINE_CONSISTENCY = "timeline_consistency"
-    TIMELINE_EVENTS = "timeline_events"
     TIMELINE_SUMMARY = "timeline_summary"
-    TIMELINE_CONSISTENCY = "timeline_consistency"
-
 
     # timeline_event fields
     DAY_NAME = "day_name"
@@ -183,6 +225,12 @@ class K:
     LABEL = "label"
     COLOR = "color"
     CONFIDENCE = "confidence"
+
+    # epistemic confidence classification (closed vs open world)
+    CONFIDENCE_CLASS = "confidence_class"
+    CONFIDENCE_CLOSED = "closed_world"
+    CONFIDENCE_OPEN = "open_world"
+
     RATIONALE_BULLETS = "rationale_bullets"
     HOW_TO_IMPROVE = "how_to_improve"
     MAINTENANCE_NOTES = "maintenance_notes"
@@ -208,6 +256,3 @@ class K:
     MODULE_STATUS = "status"
     MODULE_RUN = "run"
     MODULE_NOT_RUN = "not_run"
-
-
-
