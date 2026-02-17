@@ -1,4 +1,4 @@
-XI. Perception and Scoring Invariants (Anti-Evasion / Anti-Reroll)
+I. Perception and Scoring Invariants (Anti-Evasion / Anti-Reroll)
 
 A. Commitment / Obligation Primitive (Perception Lock)
 BiasLens omission detection SHALL operate on semantic commitments that generate epistemic obligations
