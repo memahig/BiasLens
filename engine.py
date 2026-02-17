@@ -1,8 +1,17 @@
+#!/usr/bin/env python3
+"""
+FILE: engine.py
+VERSION: 0.2
+LAST UPDATED: 2026-02-17
+PURPOSE:
+Core LLM interface and Manifesto-locked Pass A / Pass B prompts for BiasLens.
+Implements deferred imports and hybrid key loading (env var first, Streamlit secrets fallback).
+"""
+
 import json
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
-
-import os
 
 
 # ─────────────────────────────────────────────────────────────
@@ -29,8 +38,38 @@ VIEW_MODES = ["Overview", "In-Depth"]
 # OpenAI helper
 # ─────────────────────────────────────────────────────────────
 
-def _get_client() -> openai.OpenAI:
-    return openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+def _get_client() -> Any:
+    """
+    Deferred imports + Hybrid Secret Loading.
+    Order:
+      1) Environment variable (CLI/server/Docker)
+      2) Streamlit secrets (app)
+
+    Fail closed with diagnostic clarity.
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+    if not api_key:
+        try:
+            import streamlit as st  # deferred
+            api_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+        except Exception:
+            pass
+
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY not found. Set environment variable or Streamlit secret."
+        )
+
+    try:
+        import openai  # deferred
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to import openai client. Possible Python/runtime incompatibility: {e}"
+        ) from e
+
+    return openai.OpenAI(api_key=api_key)
+
 
 
 def call_llm(system_prompt: str, user_content: str) -> str:
@@ -323,7 +362,7 @@ def generate_general_summary(audit_results: List[Dict[str, Any]]) -> str:
     )
 
     top = sorted_results[:5]
-    bullets = []
+    bullets: List[str] = []
     for r in top:
         bullets.append(f"- {r['concern_level']} concern in {r['category']}: {r['finding']}")
 

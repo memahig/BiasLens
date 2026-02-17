@@ -1,52 +1,60 @@
 #!/usr/bin/env python3
 """
 FILE: builders/report_builder.py
-PURPOSE: Single authorized entry point for building BiasLens reports.
+VERSION: 0.5
+LAST UPDATED: 2026-02-16
+PURPOSE:
+Single authorized entry point for building BiasLens reports.
 
 ARCHITECTURE RULE:
-Pipeline MUST import the builder from this file — never directly from emitters.
-
-This creates a permanent abstraction boundary so future Pass B,
-retrieval systems, and reasoning modules can be added WITHOUT
-rewiring the execution spine.
+Pipeline MUST import the builder from this file. This creates a permanent 
+abstraction boundary between extraction (Pass A) and audit (Pass B).
+- Pass A (report_stub.py): Verbatim Extraction & Schema Emission.
+- Pass B (builders/pass_b.py): Epistemic Audit, Scoring, & Timeline.
 """
 
 from __future__ import annotations
+from typing import Any, Dict, Optional
 
 from report_stub import analyze_text_to_report_pack
-from builders.pass_b import run_pass_b
+from builders.pass_b import run_pass_b_audit
 from schema_names import K
 
-
-# MVP internal field (safe): gives Pass B modules access to full input text.
-# Not intent-bearing; used only for text-only perception (e.g., omissions).
+# Internal key to ensure Pass B modules have access to raw source text for structural scans.
 _INPUT_TEXT_KEY = "input_text"
 
-
-def build_report(*, text, source_title=None, source_url=None):
+def build_report(
+    *, 
+    text: str, 
+    source_title: Optional[str] = None, 
+    source_url: Optional[str] = None,
+    view_mode: str = "Overview"
+) -> Dict[str, Any]:
     """
     Authorized builder wrapper.
-
-    Today:
-        Pass A -> emitter (report_stub.analyze_text_to_report_pack)
-        Pass B -> post-processing layer
-
-    Future:
-        - Pass A: evidence bank + facts + claim registry + sockets
-        - Pass B: verification + counterevidence + claim/argument integrity + synthesis
+    Executes Pass A (Extraction) then hands off to Pass B (Epistemic Audit).
     """
-    pass_a_out = analyze_text_to_report_pack(
+    
+    # 1. PASS A: Ground truth extraction and schema initialization.
+    # Logic is located in root/report_stub.py
+    report_pack = analyze_text_to_report_pack(
         text=text,
         source_title=source_title,
         source_url=source_url,
     )
 
-    # Provide the full input text to Pass B modules in a bounded, explicit place.
-    # This does not re-scrape or change Pass A extraction; it only preserves input.
-    rm = pass_a_out.get(K.RUN_METADATA)
+    # 2. METADATA PRESERVATION
+    # We explicitly preserve the full input text in run_metadata. 
+    # This is critical for Pass B modules (Timeline, Omissions) that 
+    # need to re-scan the original text for structural patterns.
+    rm = report_pack.get(K.RUN_METADATA)
     if isinstance(rm, dict):
         rm.setdefault(_INPUT_TEXT_KEY, text)
     else:
-        pass_a_out[K.RUN_METADATA] = {_INPUT_TEXT_KEY: text}
+        report_pack[K.RUN_METADATA] = {_INPUT_TEXT_KEY: text}
 
-    return run_pass_b(pass_a_out)
+    # 3. PASS B: Epistemic Audit, Scoring, and Timeline Generation.
+    # Logic is located in builders/pass_b.py
+    final_report = run_pass_b_audit(report_pack, view_mode=view_mode)
+
+    return final_report
