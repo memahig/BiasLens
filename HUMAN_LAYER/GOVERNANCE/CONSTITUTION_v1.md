@@ -231,3 +231,23 @@ Amendments should occur only when:
 • architectural evolution demands it  
 
 Convenience is never sufficient justification for change.
+────────────────────────────────
+
+XI. Perception and Scoring Invariants (Anti-Evasion / Anti-Reroll)
+
+A. Commitment / Obligation Primitive (Perception Lock)
+BiasLens omission detection SHALL operate on semantic commitments that generate epistemic obligations
+(e.g., trend, causation, comparison, scope generalization) and evaluate whether required parameters
+(time window, baseline, comparator class, mechanism/evidence type, population scope, etc.) are present.
+
+Keyword/wordlist detection MAY be used only as temporary scaffolding or low-cost baseline telemetry.
+Lexical triggers SHALL NOT be treated as the primary perception strategy, since they are evadable via paraphrase.
+
+B. Probabilistic Perception Allowed; Deterministic Scoring Required
+Perception candidate generation MAY be probabilistic and multi-model.
+However, stars/scores SHALL be deterministic and stable for identical input text/artifacts to prevent rerolling.
+
+Stars/scores MUST be computed only from canonical, evidence-anchored, validator-approved audit artifacts
+produced by the Facts→Claims→Arguments→Article pipeline.
+Unanchored, non-canonical, or disputed candidates SHALL NOT affect scoring.
+

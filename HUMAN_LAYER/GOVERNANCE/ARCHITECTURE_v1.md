@@ -4,6 +4,10 @@ Date Locked: January 21, 2026
 System: BiasLens Epistemic / Information Integrity Audit
 
 ---
+Authority Clarification
+
+Subordinate to the BiasLens Constitution.
+Where conflict exists, the Constitution prevails.
 
 ## 📌 Purpose of This Document
 
