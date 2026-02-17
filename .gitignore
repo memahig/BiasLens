@@ -10,3 +10,4 @@ __pycache__/
 
 # Scraper Cache
 .newspaper_cache/
+archives/
