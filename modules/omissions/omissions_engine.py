@@ -163,8 +163,6 @@ def _make_finding(
         K.IMPACT: impact,
         K.SEVERITY: severity,
     }
-    }
-
 
 def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
     text = _extract_text_blob(out)
@@ -301,9 +299,17 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
         if n >= _MAX_FINDINGS_PER_DETECTOR:
             break
 
+    notes = [
+        "Omissions scan uses text-only signals; it flags absence of expected context, not intent.",
+        f"Text source: {'run_metadata.input_text' if isinstance(out.get(K.RUN_METADATA), dict) and isinstance(out.get(K.RUN_METADATA, {}).get(_INPUT_TEXT_KEY), str) else 'evidence_bank quotes'}",
+        f"Local-window checks enabled (±{_WINDOW_CHARS} chars), capped at {_MAX_FINDINGS_PER_DETECTOR} findings per detector.",
+    ]
+
+    if not findings:
+        notes.insert(0, "No systematic omissions found.")
+
     return {
         K.MODULE_STATUS: K.MODULE_RUN,
         K.FINDINGS: findings,
-        K.NOTES: [
-        ],
+        K.NOTES: notes,
     }
