@@ -27,9 +27,19 @@ class K:
     CLAIM_REGISTRY = "claim_registry"
     HEADLINE_BODY_DELTA = "headline_body_delta"
     SYSTEMATIC_OMISSION = "systematic_omission"
+    FINDINGS = "findings"
     METRICS = "metrics"
     DECLARED_LIMITS = "declared_limits"
     REPORT_PACK = "report_pack"
+
+
+    # --- systematic omission finding fields ---
+    OMISSION_ID = "omission_id"
+    OMISSION_TYPE = "omission_type"
+    TRIGGER_TEXT = "trigger_text"
+    EXPECTED_CONTEXT = "expected_context"
+    ABSENCE_SIGNAL = "absence_signal"
+    IMPACT = "impact"
 
     # --- NEW CORE ANALYSIS MODULES ---
     PREMISE_INDEPENDENCE_ANALYSIS = "premise_independence_analysis"
