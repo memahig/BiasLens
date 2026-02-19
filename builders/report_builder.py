@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 FILE: builders/report_builder.py
-VERSION: 0.5.1
-LAST UPDATED: 2026-02-17
+VERSION: 0.5.2
+LAST UPDATED: 2026-02-18
 PURPOSE:
 Single authorized entry point for building BiasLens reports.
 
 ARCHITECTURE RULE:
-Pipeline MUST import the builder from this file. This creates a permanent 
+Pipeline MUST import the builder from this file. This creates a permanent
 abstraction boundary between extraction (Pass A) and audit (Pass B).
 
-- Pass A (report_stub.py): Verbatim Extraction & Schema Emission.
+- Pass A (builders/pass_a.py): Verbatim Extraction & Schema Emission.
 - Pass B (builders/pass_b.py): Epistemic Audit, Scoring, & Timeline.
 """
 
 from __future__ import annotations
 from typing import Any, Dict, Optional
 
-from report_stub import analyze_text_to_report_pack
+from builders.pass_a import run_pass_a
 from builders.pass_b import run_pass_b   # ← correct function
 from schema_names import K
 
@@ -27,9 +27,9 @@ _INPUT_TEXT_KEY = "input_text"
 
 
 def build_report(
-    *, 
-    text: str, 
-    source_title: Optional[str] = None, 
+    *,
+    text: str,
+    source_title: Optional[str] = None,
     source_url: Optional[str] = None,
     view_mode: str = "Overview"
 ) -> Dict[str, Any]:
@@ -38,8 +38,8 @@ def build_report(
     Executes Pass A (Extraction) then hands off to Pass B (Epistemic Audit).
     """
 
-    # PASS A — Ground truth extraction
-    report_pack = analyze_text_to_report_pack(
+    # PASS A — Ground truth extraction (explicit entrypoint)
+    report_pack = run_pass_a(
         text=text,
         source_title=source_title,
         source_url=source_url,
