@@ -30,6 +30,7 @@ from constants.rating_semantics import score_to_stars, stars_to_score_midpoint
 from modules.claims.claim_evaluator import run_claim_evaluator
 from modules.timeline.timeline_engine import compute_timeline
 from modules.omissions.omissions_engine import run_omissions_engine
+from modules.presentation.headline_body_delta import evaluate_headline_body_delta
 
 
 # ---- robust key resolution (supports legacy lowercase + future uppercase) ----
@@ -110,7 +111,9 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     # NOTE: This mutates nested dicts in-place (same as before). If you ever want
     # a non-mutating Pass B, you’ll need a deep copy (expensive) or a structured copier.
     out = pass_a_out
-
+    # 0) Headline–Body Delta (Presentation Integrity) — evaluator (MVP)
+    # Container is produced in Pass A; Pass B flips it to RUN and emits deterministic notes.
+    out[K.HEADLINE_BODY_DELTA] = evaluate_headline_body_delta(out)
     # 1) Attach midpoint scores to existing integrity objects (stable behavior)
     facts_layer = out.get(K.FACTS_LAYER)
     if isinstance(facts_layer, dict):
