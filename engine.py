@@ -10,7 +10,10 @@ Implements deferred imports and hybrid key loading (env var first, Streamlit sec
 
 import json
 import os
+from dotenv import load_dotenv
 from dataclasses import dataclass
+
+load_dotenv()
 from typing import Any, Dict, List, Optional, Tuple
 
 

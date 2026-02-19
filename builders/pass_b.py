@@ -30,6 +30,7 @@ from constants.rating_semantics import score_to_stars, stars_to_score_midpoint
 from modules.claims.claim_evaluator import run_claim_evaluator
 from modules.timeline.timeline_engine import compute_timeline
 from modules.omissions.omissions_engine import run_omissions_engine
+from modules.omissions.omissions_finder import run_omissions_finder
 from modules.presentation.headline_body_delta import evaluate_headline_body_delta
 
 
@@ -153,7 +154,11 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         article_layer[K.TIMELINE_EVENTS] = events
         article_layer[K.TIMELINE_SUMMARY] = summary
 
-        # 3b) Systematic Omission (MVP) — absence of expected context only
+        # 3b) Systematic Omission (MVP)
+        # Stage 1: perception layer (internal candidates only)
+        out = run_omissions_finder(out)
+
+        # Stage 2: deterministic structural findings (public-facing)
         article_layer[K.SYSTEMATIC_OMISSION] = run_omissions_engine(out)
         # Socket only. No Phase 4 intelligence here.
         article_layer[K.TIMELINE_CONSISTENCY] = {

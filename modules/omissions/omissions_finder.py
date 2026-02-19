@@ -21,6 +21,9 @@ from schema_names import K
 # Existing deterministic STRUCTURAL engine (v0.5) used as a subroutine.
 from modules.omissions.omissions_engine import run_omissions_engine as _run_structural_engine
 from evidence_bank_builder import add_evidence_span
+from modules.omissions.obligation_harvester import harvest_obligation_tickets
+from engine import call_llm
+import json
 
 
 def _ensure_run_metadata(out: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,6 +33,41 @@ def _ensure_run_metadata(out: Dict[str, Any]) -> Dict[str, Any]:
         out[K.RUN_METADATA] = rm
     return rm
 
+def _llm_json_call(system_prompt: str, user_content: str, *, out: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Adapter: engine.call_llm -> obligation_harvester contract.
+    Fail-closed, but records breadcrumbs for debugging.
+    """
+    rm = _ensure_run_metadata(out)
+    notes = rm.get(K.OMISSION_FINDER_NOTES)
+    if not isinstance(notes, dict):
+        notes = {}
+        rm[K.OMISSION_FINDER_NOTES] = notes
+
+    layers = notes.get("layers")
+    if not isinstance(layers, dict):
+        layers = {}
+        notes["layers"] = layers
+
+    infer = layers.get("inferential")
+    if not isinstance(infer, dict):
+        infer = {}
+        layers["inferential"] = infer
+
+    infer["llm_called"] = True
+
+    try:
+        raw = call_llm(system_prompt, user_content)
+        infer["llm_raw_chars"] = len(raw) if isinstance(raw, str) else None
+        parsed = json.loads(raw)
+        infer["llm_parse_ok"] = True
+        if isinstance(parsed, dict) and isinstance(parsed.get("candidates"), list):
+            infer["llm_raw_candidate_count"] = len(parsed.get("candidates", []))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception as e:
+        infer["llm_parse_ok"] = False
+        infer["error"] = f"{type(e).__name__}: {e}"
+        return {}
 
 def _mk_candidate(
     *,
@@ -172,8 +210,18 @@ def find_structural_candidates(out: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def find_inferential_candidates(out: Dict[str, Any]) -> List[Dict[str, Any]]:
-    # v0.1: stub (LLM expectation harvester will populate later)
-    return []
+    """
+    LLM-driven obligation harvester (inferential omission candidates).
+    Internal-only; returns candidate tickets.
+    """
+    try:
+        tickets = harvest_obligation_tickets(
+            out=out,
+            llm_json_call=lambda sp, uc: _llm_json_call(sp, uc, out=out),
+        )
+        return tickets if isinstance(tickets, list) else []
+    except Exception:
+        return []
 
 
 def find_interpretive_candidates(out: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -184,21 +232,76 @@ def find_interpretive_candidates(out: Dict[str, Any]) -> List[Dict[str, Any]]:
 def run_omissions_finder(out: Dict[str, Any]) -> Dict[str, Any]:
     rm = _ensure_run_metadata(out)
 
+    # 0) Create notes scaffold FIRST so _llm_json_call can write breadcrumbs into it.
+    notes = rm.get(K.OMISSION_FINDER_NOTES)
+    if not isinstance(notes, dict):
+        notes = {}
+        rm[K.OMISSION_FINDER_NOTES] = notes
+
+    layers = notes.get("layers")
+    if not isinstance(layers, dict):
+        layers = {}
+        notes["layers"] = layers
+
+    # Ensure layer dicts exist (do not overwrite if they already exist)
+    layers.setdefault("structural", {
+        "status": "not_run",
+        "origin": "deterministic",
+        "module": "modules/omissions/omissions_engine.py",
+    })
+    layers.setdefault("inferential", {
+        "status": "unknown",
+        "origin": "llm",
+        "module": "modules/omissions/obligation_harvester.py",
+        "llm_called": None,
+        "llm_parse_ok": None,
+        "llm_raw_candidate_count": None,
+        "llm_raw_chars": None,
+        "anchored_count": 0,
+        "error": None,
+    })
+    layers.setdefault("interpretive", {
+        "status": "not_run",
+        "origin": "llm",
+        "module": None,
+    })
+
+    # 1) Run candidate generators
     structural = find_structural_candidates(out)
-    inferential = find_inferential_candidates(out)
+    inferential = find_inferential_candidates(out)   # <-- this will call _llm_json_call and set breadcrumbs
     interpretive = find_interpretive_candidates(out)
 
     rm[K.OMISSION_CANDIDATES_STRUCTURAL] = structural
     rm[K.OMISSION_CANDIDATES_INFERENTIAL] = inferential
     rm[K.OMISSION_CANDIDATES_INTERPRETIVE] = interpretive
-    rm[K.OMISSION_FINDER_NOTES] = {
-        "stage": "finder_only",
-        "counts": {
-            "structural": len(structural),
-            "inferential": len(inferential),
-            "interpretive": len(interpretive),
-        },
-        "visibility": "internal_only",
+
+    # 2) Finalize notes (update counts + statuses WITHOUT overwriting breadcrumbs)
+    notes["stage"] = "finder_only"
+    notes["visibility"] = "internal_only"
+    notes["counts"] = {
+        "structural": len(structural),
+        "inferential": len(inferential),
+        "interpretive": len(interpretive),
     }
+
+    # structural status
+    struct_layer = layers.get("structural")
+    if isinstance(struct_layer, dict):
+        struct_layer["status"] = "run"
+
+    # inferential status derived from breadcrumbs written in _llm_json_call
+    infer_layer = layers.get("inferential")
+    if isinstance(infer_layer, dict):
+        infer_layer["anchored_count"] = len(inferential)
+
+        llm_called = infer_layer.get("llm_called") is True
+        llm_parse_ok = infer_layer.get("llm_parse_ok") is True
+
+        if llm_called and llm_parse_ok:
+            infer_layer["status"] = "run"
+        elif llm_called and not llm_parse_ok:
+            infer_layer["status"] = "error"
+        else:
+            infer_layer["status"] = "not_run"
 
     return out
