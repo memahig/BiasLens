@@ -15,3 +15,19 @@ However, stars/scores SHALL be deterministic and stable for identical input text
 Stars/scores MUST be computed only from canonical, evidence-anchored, validator-approved audit artifacts
 produced by the Facts→Claims→Arguments→Article pipeline.
 Unanchored, non-canonical, or disputed candidates SHALL NOT affect scoring.
+
+
+## Amendment — Constitution v4  
+Title: Inquiry Integrity Requirement  
+Date: 2026-02-18  
+
+Reason:  
+Failure to audit inquiry structure was identified as a primary epistemic safety vulnerability capable of corrupting downstream analysis.
+
+Change:  
+Added a Core Epistemic Principle requiring structural evaluation of inquiries before responses may be epistemically assessed.
+
+Impact:  
+Seals a primary reasoning-entry vulnerability, preventing premise contamination, framing capture, and downstream analytic distortion.
+
+Classification: Epistemic Safety Amendment.

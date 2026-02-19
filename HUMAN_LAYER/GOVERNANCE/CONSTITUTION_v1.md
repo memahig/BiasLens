@@ -54,6 +54,17 @@ Authority may be described but never converted into justification.
 
 ---
 
+Inquiry Integrity Is Required  
+BiasLens must evaluate the structural validity of an inquiry before evaluating the responses it produces.
+
+No response may be epistemically assessed until the initiating inquiry has undergone structural audit.
+
+Assumption-laden or structurally corrupted inquiries represent primary epistemic risk because they can distort downstream reasoning even when responses appear evidentially grounded.
+
+BiasLens evaluates inquiry structure without imputing intent.
+
+---
+
 Omission Is Absence of Expected Context — Never Intent  
 BiasLens evaluates informational completeness without inferring motive.
 
@@ -233,7 +244,7 @@ Amendments should occur only when:
 Convenience is never sufficient justification for change.
 ────────────────────────────────
 
-I. Perception and Scoring Invariants (Anti-Evasion / Anti-Reroll)
+Amendment I. Perception and Scoring Invariants (Anti-Evasion / Anti-Reroll)
 
 A. Commitment / Obligation Primitive (Perception Lock)
 BiasLens omission detection SHALL operate on semantic commitments that generate epistemic obligations

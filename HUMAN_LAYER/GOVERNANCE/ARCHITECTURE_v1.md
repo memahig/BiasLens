@@ -4,10 +4,13 @@ Date Locked: January 21, 2026
 System: BiasLens Epistemic / Information Integrity Audit
 
 ---
+
 Authority Clarification
 
-Subordinate to the BiasLens Constitution.
+Subordinate to the BiasLens Constitution.  
 Where conflict exists, the Constitution prevails.
+
+---
 
 ## 📌 Purpose of This Document
 
@@ -214,3 +217,150 @@ As of 2026-01-21:
 - Manifesto codified in system behavior  
 
 This marks BiasLens v0 — Architecture Complete.
+
+---
+
+## 📜 Amendment I — Architectural Invariant: Core–Policy Separation  
+Status: Locked  
+Authority: Subordinate to the Constitution. Binding within the BiasLens Architecture.  
+Date Locked: 2026-02-17
+
+---
+
+### Purpose
+
+To preserve the universality and long-term stability of the BiasLens engine as it expands across communication formats.
+
+This amendment establishes a strict separation between **epistemic detection** and **genre-based evaluation.**
+
+---
+
+### Invariant
+
+BiasLens is a **genre-neutral epistemic engine.**
+
+The core system evaluates structural properties of information without embedding format-specific assumptions.
+
+Structural properties include, but are not limited to:
+
+- provenance clarity  
+- evidence linkage  
+- attribution traceability  
+- checkability vs currently-uncheckable claims  
+- uncertainty discipline  
+- internal consistency  
+- omission as absence of expected context  
+- reasoning structure  
+- evidence–claim alignment  
+
+Analytic modules must report what is present, absent, unclear, or unsupported.
+
+They do **not** determine acceptability relative to genre norms.
+
+---
+
+### Genre Policy Layer
+
+Standards that vary by communication format — including journalistic practices, scientific methodology expectations, legal citation norms, broadcast conventions, or other domain-specific requirements — must reside outside the core engine.
+
+Genre policy is responsible for:
+
+- assigning evaluative weight  
+- defining expectation thresholds  
+- interpreting severity  
+- shaping renderer output  
+
+Genre policy may inform scoring but may not alter:
+
+- Pass A / Pass B separation  
+- evidence requirements  
+- validator enforcement  
+- schema integrity  
+- taxonomy structure  
+- attribution verification rules  
+
+The evidence-indexed audit model remains universal.
+
+---
+
+### Architectural Safety Rule
+
+Modules detect epistemic structure.  
+Policy determines evaluative weight.
+
+Embedding genre assumptions inside core analytic modules constitutes architectural drift.
+
+---
+
+### Regression Condition
+
+Any system that hardcodes format-specific evaluative standards into the core engine — including sourcing thresholds, anonymity acceptability, methodological requirements, or domain-specific evidentiary norms — is in violation of the BiasLens architecture.
+
+Such changes require an explicit architecture version lock.
+
+---
+
+### Design Consequence
+
+Adapters may evolve.  
+Genre policies may expand.  
+Renderers may diversify.
+
+The epistemic engine must remain universal.
+
+---
+
+## 📣 Rendering Integrity Constraint  
+Status: Locked  
+Authority: Subordinate to the Constitution. Binding within the BiasLens Architecture.  
+Date Locked: 2026-02-18
+
+---
+
+### Purpose
+
+To prevent linguistic drift in report generation that either:
+
+- softens observable structural failures to avoid appearing judgmental, or  
+- overstates conclusions beyond evidentiary support.
+
+BiasLens must maintain proportionality between evidentiary strength and linguistic strength.
+
+---
+
+### Invariant
+
+Reports must:
+
+- Use direct, structurally precise language when supported by validated findings.
+- Avoid euphemistic or flattening phrasing that obscures observable epistemic breakdowns.
+- Avoid emotionally charged or character-based descriptions.
+- Avoid speculative motive or internal-state inference unless evidentially established.
+- Ensure that linguistic strength is proportional to evidentiary strength.
+
+Strong conclusions are permitted when the evidence justifies them.
+
+Uncertainty must be explicit when evidence is insufficient.
+
+---
+
+### Architectural Safety Rule
+
+Tone moderation must never dilute structural accuracy.  
+Speculation must never exceed the record.  
+Truth is the guard rail.
+
+---
+
+### Regression Condition
+
+Any renderer or prompt layer that:
+
+- introduces euphemistic flattening,  
+- suppresses validated structural findings to avoid perceived harshness,  
+- exaggerates findings beyond validator-approved evidence, or  
+- infers motive without evidentiary grounding,  
+
+is in violation of the BiasLens architecture.
+
+Such behavior constitutes architectural drift.

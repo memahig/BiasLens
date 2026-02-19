@@ -56,6 +56,9 @@ Analytical elegance must never substitute for contact with reality.
 
 The system prioritizes disciplined inquiry over rhetorical appeal.
 
+BiasLens recognizes that flawed inquiries can generate misleading discourse; therefore inquiry structure is treated as a primary object of epistemic analysis.
+
+
 ────────────────────────────────
 
 Premise Awareness
