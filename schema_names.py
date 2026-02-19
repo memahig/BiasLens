@@ -26,6 +26,7 @@ class K:
     FACTS_LAYER = "facts_layer"
     CLAIM_REGISTRY = "claim_registry"
     HEADLINE_BODY_DELTA = "headline_body_delta"
+    SYSTEMATIC_OMISSION = "systematic_omission"
     METRICS = "metrics"
     DECLARED_LIMITS = "declared_limits"
     REPORT_PACK = "report_pack"

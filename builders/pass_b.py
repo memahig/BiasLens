@@ -151,8 +151,7 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         article_layer[K.TIMELINE_SUMMARY] = summary
 
         # 3b) Systematic Omission (MVP) — absence of expected context only
-        article_layer["systematic_omission"] = run_omissions_engine(out)
-
+        article_layer[K.SYSTEMATIC_OMISSION] = run_omissions_engine(out)
         # Socket only. No Phase 4 intelligence here.
         article_layer[K.TIMELINE_CONSISTENCY] = {
 

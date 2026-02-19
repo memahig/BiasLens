@@ -155,13 +155,14 @@ def _make_finding(
     severity: str,
 ) -> Dict[str, Any]:
     return {
-        "omission_id": omission_id,
-        "omission_type": omission_type,
-        "trigger_text": trigger_text,
-        "expected_context": expected_context,
-        "absence_signal": absence_signal,
-        "impact": impact,
-        "severity": severity,
+        K.OMISSION_ID: omission_id,
+        K.OMISSION_TYPE: omission_type,
+        K.TRIGGER_TEXT: trigger_text,
+        K.EXPECTED_CONTEXT: expected_context,
+        K.ABSENCE_SIGNAL: absence_signal,
+        K.IMPACT: impact,
+        K.SEVERITY: severity,
+    }
     }
 
 
@@ -172,8 +173,8 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
     if not text:
         return {
             K.MODULE_STATUS: K.MODULE_RUN,
-            "findings": [],
-            "notes": ["No text/evidence quotes available for omission scan."],
+            K.FINDINGS: [],
+            K.NOTES: ["No text/evidence quotes available for omission scan."],
         }
 
     # --------------------------
@@ -302,10 +303,7 @@ def run_omissions_engine(out: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         K.MODULE_STATUS: K.MODULE_RUN,
-        "findings": findings,
-        "notes": [
-            "Omissions scan uses text-only signals; it flags absence of expected context, not intent.",
-            f"Text source: {'run_metadata.input_text' if isinstance(out.get(K.RUN_METADATA), dict) and isinstance(out.get(K.RUN_METADATA, {}).get(_INPUT_TEXT_KEY), str) else 'evidence_bank quotes'}",
-            f"Local-window checks enabled (±{_WINDOW_CHARS} chars), capped at {_MAX_FINDINGS_PER_DETECTOR} findings per detector.",
+        K.FINDINGS: findings,
+        K.NOTES: [
         ],
     }
