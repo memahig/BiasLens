@@ -24,6 +24,16 @@ class ValidationError(Exception):
 
 
 # -----------------------------
+# Small helper
+# -----------------------------
+def _read_module_status(d: Any) -> Any:
+    if not isinstance(d, dict):
+        return None
+    # MODULE_STATUS is write authority; STATUS is legacy read fallback
+    return d.get(K.MODULE_STATUS) or d.get(K.COUNTEREVIDENCE_RUN_STATUS) or d.get(K.STATUS)
+
+
+# -----------------------------
 # Public entry point
 # -----------------------------
 def validate_output(output: dict) -> bool:
@@ -32,12 +42,6 @@ def validate_output(output: dict) -> bool:
     errors += validate_top_level(output)
 
     evidence_ids = collect_evidence_ids(output)
-
-def _read_module_status(d: Any) -> Any:
-    if not isinstance(d, dict):
-        return None
-    # MODULE_STATUS is write authority; STATUS is legacy read fallback
-    return d.get(K.MODULE_STATUS) or d.get(K.COUNTEREVIDENCE_RUN_STATUS) or d.get(K.STATUS)
 
     # Normative rules
     errors += enforce_integrity(output, evidence_ids)
@@ -248,8 +252,7 @@ def validate_facts_layer(out: Dict[str, Any], evidence_ids: Set[str]) -> List[st
 # -----------------------------
 # Claim registry
 # -----------------------------
-_ALLOWED_STAKES = {"low", "medium", "high"}
-
+_ALLOWED_STAKES = {K.STAKES_LOW, K.STAKES_MODERATE, K.STAKES_ELEVATED, K.STAKES_HIGH}
 
 def validate_claim_registry(out: Dict[str, Any], evidence_ids: Set[str]) -> List[str]:
     cr = out.get(K.CLAIM_REGISTRY)
