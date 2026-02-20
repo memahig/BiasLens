@@ -31,6 +31,86 @@ _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 # Paragraph blocks: separated by one or more blank lines.
 _PARA_BLOCK = re.compile(r"(?:^|\n)([^\n].*?)(?=\n\s*\n|\Z)", re.DOTALL)
 
+# Common abbreviations that should NOT be treated as sentence boundaries.
+# Keep this list small + conservative; it can be extended safely later.
+_ABBREV_NO_SPLIT = {
+    "U.S.", "U.K.", "E.U.", "U.N.",
+    "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.",
+    "St.", "Mt.",
+    "Inc.", "Ltd.", "Co.",
+    "vs.", "No.", "Fig.", "Dept.",
+}
+
+def _join_false_sentence_splits(chunks: List[str]) -> List[str]:
+    """
+    Re-join chunks that were incorrectly split at an abbreviation like 'U.S.'.
+    Deterministic, conservative heuristic:
+      - if a chunk ends with a known abbreviation, join it with the next chunk
+      - also handles patterns like 'U.S.' where last token is X.X. (all-caps)
+    """
+    if not chunks:
+        return []
+
+    out: List[str] = []
+    i = 0
+    while i < len(chunks):
+        cur = (chunks[i] or "").strip()
+        if not cur:
+            i += 1
+            continue
+
+        if i + 1 < len(chunks):
+            nxt = (chunks[i + 1] or "").strip()
+            last_token = cur.split()[-1] if cur.split() else ""
+
+            # Known abbreviations
+            if last_token in _ABBREV_NO_SPLIT:
+                out.append((cur + " " + nxt).strip())
+                i += 2
+                continue
+
+            # Pattern like 'U.S.' / 'E.U.' / 'U.N.' (all caps segments)
+            # Keep conservative: only 2-3 segments, all 1-2 letters.
+            if re.fullmatch(r"(?:[A-Z]{1,2}\.){2,3}", last_token):
+                out.append((cur + " " + nxt).strip())
+                i += 2
+                continue
+
+        out.append(cur)
+        i += 1
+
+    return out
+
+def _clip_at_boundary(s: str, max_len: int) -> str:
+    """
+    Clip s to <= max_len but try hard to end on a sentence/phrase boundary.
+    Returns a verbatim prefix (no ellipsis) so span-finding stays exact.
+    """
+    s = (s or "").strip()
+    if len(s) <= max_len:
+        return s
+
+    prefix = s[:max_len]
+
+    # Prefer sentence end inside prefix
+    for pat in (".", "?", "!"):
+        i = prefix.rfind(pat)
+        if i >= int(max_len * 0.55):  # don't clip too aggressively
+            return prefix[: i + 1].rstrip()
+
+    # Then phrase/clause boundaries
+    for pat in ("; ", ": ", ", ", " — ", " - "):
+        i = prefix.rfind(pat)
+        if i >= int(max_len * 0.55):
+            return prefix[: i + len(pat)].rstrip()
+
+    # Then last whitespace
+    j = prefix.rfind(" ")
+    if j >= int(max_len * 0.55):
+        return prefix[:j].rstrip()
+
+    return prefix.rstrip()
+
 
 def _find_span(text: str, quote: str, start_search: int = 0) -> Optional[Tuple[int, int]]:
     if not quote:
@@ -160,9 +240,7 @@ def build_evidence_bank(
             continue
 
         # clip to keep evidence items readable (still verbatim prefix)
-        clip = block
-        if len(clip) > 420:
-            clip = clip[:420].rstrip()  # prefix is verbatim
+        clip = _clip_at_boundary(block, 420)
         # locate span of the clipped prefix inside the block region
         start = m.start(1)
         span = _find_span(raw, clip, start_search=start)
@@ -178,15 +256,13 @@ def build_evidence_bank(
     # -----------------------------
     if len(bank) < max_items:
         chunks = [c.strip() for c in _SENT_SPLIT.split(raw.strip()) if c.strip()]
+        chunks = _join_false_sentence_splits(chunks)
+
         for c in chunks:
             if len(bank) >= max_items:
                 break
 
-            quote = c
-            # keep quotes manageable
-            if len(quote) > 280:
-                quote = quote[:280].rstrip()
-                # (no ellipsis added; we need an exact span)
+            quote = _clip_at_boundary(c, 280)
 
             span = _find_span(raw, quote, start_search=cursor)
             if span is None:

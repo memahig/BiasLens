@@ -133,9 +133,77 @@ def _extract_text_blob(out: Dict[str, Any]) -> str:
 
 
 def _snippet(text: str, start: int, end: int, pad: int = 70) -> str:
-    s = max(0, start - pad)
-    e = min(len(text), end + pad)
-    return text[s:e].replace("\n", " ").strip()
+    """
+    Deterministic, sentence-bounded excerpt for trigger_text.
+
+    Contract:
+    - Prefer the full sentence containing the trigger.
+    - Do not cross newline boundaries (prevents heading bleed).
+    - If no sentence punctuation exists on that line, return the full line/phrase.
+    - Never return a mid-word start when avoidable.
+    """
+    if not isinstance(text, str) or not text:
+        return ""
+
+    # Work on the single line containing the trigger: newline is a hard boundary.
+    lb_nl = text.rfind("\n", 0, start)
+    rb_nl = text.find("\n", end)
+
+    line_start = lb_nl + 1 if lb_nl != -1 else 0
+    line_end = rb_nl if rb_nl != -1 else len(text)
+
+    line = text[line_start:line_end]
+    if not line.strip():
+        return ""
+
+    # Trigger positions relative to line.
+    ls = max(0, start - line_start)
+    le = max(ls, min(len(line), end - line_start))
+
+    # Find sentence boundaries within the line (prefer the sentence containing the trigger).
+    # Left boundary: last [.?!] before ls
+    sent_lb = 0
+    for ch in (".", "?", "!"):
+        i = line.rfind(ch, 0, ls)
+        if i != -1:
+            sent_lb = max(sent_lb, i + 1)
+
+    # Right boundary: first [.?!] after le (include punctuation)
+    sent_rb_candidates = []
+    for ch in (".", "?", "!"):
+        j = line.find(ch, le)
+        if j != -1:
+            sent_rb_candidates.append(j + 1)
+    sent_rb = min(sent_rb_candidates) if sent_rb_candidates else len(line)
+
+    excerpt = line[sent_lb:sent_rb].strip()
+
+    # Normalize whitespace
+    excerpt = re.sub(r"\s+", " ", excerpt).strip()
+
+    # Avoid mid-word starts (e.g., "ump added", "ed joint")
+    if excerpt and sent_lb > 0:
+        prev = line[sent_lb - 1]
+        cur = line[sent_lb] if sent_lb < len(line) else ""
+        if prev.isalpha() and cur.isalpha():
+            # advance to next space if it's close, otherwise keep as-is
+            sp = excerpt.find(" ")
+            if sp != -1 and sp < 40:
+                excerpt = excerpt[sp + 1 :].strip()
+
+    # If still empty, fallback to the entire line (phrase)
+    if not excerpt:
+        excerpt = re.sub(r"\s+", " ", line).strip()
+
+    # Cap length deterministically
+    max_chars = 240
+    if len(excerpt) > max_chars:
+        cut = excerpt.rfind(" ", 0, max_chars)
+        if cut < 60:
+            cut = max_chars
+        excerpt = excerpt[:cut].rstrip() + "…"
+
+    return excerpt
 
 
 def _window(text: str, start: int, end: int, size: int = _WINDOW_CHARS) -> str:

@@ -239,6 +239,9 @@ def analyze_text_to_report_pack(
     source_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     evidence_bank = _build_evidence_bank(text=text, source_title=source_title, source_url=source_url, max_items=40)
+    print(f"[DBG][PASS_A][report_stub.py:241] evidence_bank_items={len(evidence_bank)}")
+    us_hits = [ev for ev in evidence_bank if ev.get(K.QUOTE, "").strip() in ("The U.S.", "The U.S")]
+    print(f"[DBG][PASS_A][report_stub.py:241] us_sentence_hits={len(us_hits)} eids={[ev.get(K.EID) for ev in us_hits]}")
     facts = _extract_facts_from_evidence(evidence_bank, max_facts=40)
     claims = _build_claims_from_evidence(evidence_bank, max_claims=25)
 
