@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 FILE: builders/pass_b.py
-VERSION: 0.2
-LAST UPDATED: 2026-02-08
+VERSION: 0.3
+LAST UPDATED: 2026-02-19
 PURPOSE: Pass B orchestrator (post-Pass-A) — extends a Pass A report pack.
 
 ARCHITECTURE LOCK:
@@ -11,14 +11,18 @@ ARCHITECTURE LOCK:
 - Pass B extends the existing schema output; it does not replace it.
 
 Current behavior:
-- Adds optional internal numeric scoring (score_0_100) to integrity objects
-  WITHOUT changing stars (uses star-band midpoint to preserve consistency).
-- Runs Claim Evaluation Engine and attaches output under claim_registry.claim_evaluations.
-- Builds claim_registry.claim_grounding from claim_evaluations.score_0_100 (stars derived).
 - WIRES timeline into article_layer:
     timeline_events
     timeline_summary
-    timeline_consistency  (socket: status + notes; no intelligence yet)
+- Runs Claim Evaluation Engine and attaches output under claim_registry.claim_evaluations.
+- Builds claim_registry.claim_grounding from claim_evaluations.score_0_100 (stars derived).
+- Evaluates Headline–Body Delta (Presentation Integrity) under headline_body_delta.
+- Adds optional internal numeric scoring (score_0_100) to integrity objects
+  WITHOUT changing stars (uses star-band midpoint to preserve consistency).
+- Runs Systematic Omission:
+    Stage 1 (internal): omissions_finder writes candidates + breadcrumbs under run_metadata.*
+    Stage 2 (public): omissions_engine writes deterministic findings under article_layer.systematic_omission
+- Emits sockets only (timeline_consistency, framing_evidence_alignment). No extra intelligence.
 """
 
 from __future__ import annotations
@@ -112,32 +116,12 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
     # NOTE: This mutates nested dicts in-place (same as before). If you ever want
     # a non-mutating Pass B, you’ll need a deep copy (expensive) or a structured copier.
     out = pass_a_out
-    # 0) Headline–Body Delta (Presentation Integrity) — evaluator (MVP)
-    # Container is produced in Pass A; Pass B flips it to RUN and emits deterministic notes.
-    out[K.HEADLINE_BODY_DELTA] = evaluate_headline_body_delta(out)
-    # 1) Attach midpoint scores to existing integrity objects (stable behavior)
-    facts_layer = out.get(K.FACTS_LAYER)
-    if isinstance(facts_layer, dict):
-        integ = facts_layer.get(_FACT_VERIFICATION_KEY)
-        if isinstance(integ, dict):
-            _ensure_score_midpoint(integ)
 
-    article_layer = out.get(K.ARTICLE_LAYER)
-    if isinstance(article_layer, dict):
-        integ = article_layer.get(K.ARTICLE_INTEGRITY)
-        if isinstance(integ, dict):
-            _ensure_score_midpoint(integ)
-
-    # 2) Claim Evaluation Engine → claim_registry.claim_evaluations
-    claim_module = run_claim_evaluator(out)
-
+    # Resolve core containers (do not create if missing; Pass A owns construction)
     cr = out.get(K.CLAIM_REGISTRY)
-    if isinstance(cr, dict):
-        cr[K.CLAIM_EVALUATIONS] = claim_module
-        cr[_CLAIM_GROUNDING_KEY] = _build_claim_grounding(claim_eval=claim_module)
-
-    # 3) Timeline wiring → article_layer.*
     article_layer = out.get(K.ARTICLE_LAYER)
+
+    # 1) Timeline wiring → article_layer.*
     if isinstance(article_layer, dict) and isinstance(cr, dict):
         claims = cr.get(K.CLAIMS, [])
         if isinstance(claims, list):
@@ -154,15 +138,38 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
         article_layer[K.TIMELINE_EVENTS] = events
         article_layer[K.TIMELINE_SUMMARY] = summary
 
-        # 3b) Systematic Omission (MVP)
-        # Stage 1: perception layer (internal candidates only)
-        out = run_omissions_finder(out)
+    # 2) Claim Evaluation Engine → claim_registry.claim_evaluations + claim_grounding
+    claim_module = run_claim_evaluator(out)
+    if isinstance(cr, dict):
+        cr[K.CLAIM_EVALUATIONS] = claim_module
+        cr[_CLAIM_GROUNDING_KEY] = _build_claim_grounding(claim_eval=claim_module)
 
-        # Stage 2: deterministic structural findings (public-facing)
+    # 3) Headline–Body Delta (Presentation Integrity) — evaluator (MVP)
+    # Container is produced in Pass A; Pass B flips it to RUN and emits deterministic notes.
+    out[K.HEADLINE_BODY_DELTA] = evaluate_headline_body_delta(out)
+
+    # 4) Attach midpoint scores to existing integrity objects (stable behavior)
+    facts_layer = out.get(K.FACTS_LAYER)
+    if isinstance(facts_layer, dict):
+        integ = facts_layer.get(_FACT_VERIFICATION_KEY)
+        if isinstance(integ, dict):
+            _ensure_score_midpoint(integ)
+
+    if isinstance(article_layer, dict):
+        integ = article_layer.get(K.ARTICLE_INTEGRITY)
+        if isinstance(integ, dict):
+            _ensure_score_midpoint(integ)
+
+    # 5) Systematic Omission (MVP)
+    # Stage 1: perception layer (internal candidates only)
+    out = run_omissions_finder(out)
+
+    # Stage 2: deterministic structural findings (public-facing)
+    if isinstance(article_layer, dict):
         article_layer[K.SYSTEMATIC_OMISSION] = run_omissions_engine(out)
+
         # Socket only. No Phase 4 intelligence here.
         article_layer[K.TIMELINE_CONSISTENCY] = {
-
             K.MODULE_STATUS: K.MODULE_RUN,
             "notes": [
                 "Timeline events extracted using weekday and clock anchors.",
@@ -172,7 +179,7 @@ def run_pass_b(pass_a_out: Dict[str, Any]) -> Dict[str, Any]:
             ],
         }
 
-        # 4) Framing–Evidence Alignment (socket only — no intelligence yet)
+        # 6) Framing–Evidence Alignment (socket only — no intelligence yet)
         article_layer[K.FRAMING_EVIDENCE_ALIGNMENT] = {
             K.MODULE_STATUS: K.MODULE_NOT_RUN,
             "notes": [
