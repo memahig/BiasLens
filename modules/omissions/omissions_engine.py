@@ -145,14 +145,17 @@ def _snippet(text: str, start: int, end: int, pad: int = 70) -> str:
     if not isinstance(text, str) or not text:
         return ""
 
+    # Treat Unicode line separators as hard newlines (index-safe: 1 char → 1 char).
+    t = text.replace("\u2028", "\n").replace("\u2029", "\n")
+
     # Work on the single line containing the trigger: newline is a hard boundary.
-    lb_nl = text.rfind("\n", 0, start)
-    rb_nl = text.find("\n", end)
+    lb_nl = t.rfind("\n", 0, start)
+    rb_nl = t.find("\n", end)
 
     line_start = lb_nl + 1 if lb_nl != -1 else 0
-    line_end = rb_nl if rb_nl != -1 else len(text)
+    line_end = rb_nl if rb_nl != -1 else len(t)
 
-    line = text[line_start:line_end]
+    line = t[line_start:line_end]
     if not line.strip():
         return ""
 
@@ -160,9 +163,22 @@ def _snippet(text: str, start: int, end: int, pad: int = 70) -> str:
     ls = max(0, start - line_start)
     le = max(ls, min(len(line), end - line_start))
 
+    # Headline-bleed guard:
+    # If an ALL-CAPS "headline-ish" chunk exists before the trigger on the same line,
+    # treat the end of that chunk as a hard left boundary.
+    #
+    # Heuristic: 5+ uppercase tokens (A-Z/0-9/'/-), mostly spaces between, no sentence punctuation.
+    headlineish = re.compile(r"(?:^|[\s])(?:[A-Z0-9][A-Z0-9'’\-]*)(?:\s+(?:[A-Z0-9][A-Z0-9'’\-]*)){4,}")
+    hard_lb = 0
+    for mh in headlineish.finditer(line):
+        if mh.end() <= ls:
+            chunk = line[mh.start():mh.end()]
+            if "." not in chunk and "?" not in chunk and "!" not in chunk:
+                hard_lb = max(hard_lb, mh.end())
+
     # Find sentence boundaries within the line (prefer the sentence containing the trigger).
-    # Left boundary: last [.?!] before ls
-    sent_lb = 0
+    # Left boundary: last [.?!] before ls, but never before hard_lb.
+    sent_lb = hard_lb
     for ch in (".", "?", "!"):
         i = line.rfind(ch, 0, ls)
         if i != -1:
@@ -186,7 +202,6 @@ def _snippet(text: str, start: int, end: int, pad: int = 70) -> str:
         prev = line[sent_lb - 1]
         cur = line[sent_lb] if sent_lb < len(line) else ""
         if prev.isalpha() and cur.isalpha():
-            # advance to next space if it's close, otherwise keep as-is
             sp = excerpt.find(" ")
             if sp != -1 and sp < 40:
                 excerpt = excerpt[sp + 1 :].strip()
@@ -204,7 +219,6 @@ def _snippet(text: str, start: int, end: int, pad: int = 70) -> str:
         excerpt = excerpt[:cut].rstrip() + "…"
 
     return excerpt
-
 
 def _window(text: str, start: int, end: int, size: int = _WINDOW_CHARS) -> str:
     s = max(0, start - size)
