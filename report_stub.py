@@ -43,9 +43,30 @@ from schema_names import K
 from enforcers.integrity_objects import STAR_MAP, CONF_ALLOWED
 from enforcers.facts_star_policy import clamp_fact_table_stars
 
+import sys
+
 
 _SENT_SPLIT_RE = re.compile(r"(?<=[\.\!\?])\s+")
+# Protect dots inside abbreviations/initialisms so naive splitting doesn't break sentences.
+_PROT_DOT = "∯"
 
+# Multi-initialisms like U.S. / U. S. / F.B.I. (optionally spaced)
+_INITIALISM_RE = re.compile(r"\b(?:[A-Z]\.\s*){2,}")
+
+def _protect_abbrev_dots(t: str) -> str:
+    if not t:
+        return t
+
+    # High-impact abbreviations that commonly appear in journalism
+    t = re.sub(r"\b(i\.e\.|e\.g\.|etc\.)", lambda m: m.group(0).replace(".", _PROT_DOT), t, flags=re.I)
+
+    # Protect multi-initialisms / acronyms with dots
+    t = _INITIALISM_RE.sub(lambda m: m.group(0).replace(".", _PROT_DOT), t)
+
+    return t
+
+def _restore_abbrev_dots(t: str) -> str:
+    return (t or "").replace(_PROT_DOT, ".")
 
 # -----------------------------
 # Small helpers
@@ -58,14 +79,16 @@ def _split_sentences(text: str) -> List[str]:
     t = (text or "").strip()
     if not t:
         return []
+
+    t = _protect_abbrev_dots(t)
     parts = _SENT_SPLIT_RE.split(t)
+
     out: List[str] = []
     for p in parts:
-        p = p.strip()
+        p = _restore_abbrev_dots(p).strip()
         if p:
             out.append(p)
     return out
-
 
 def _safe_confidence(conf: str) -> str:
     return conf if conf in CONF_ALLOWED else sorted(CONF_ALLOWED)[0]
@@ -238,10 +261,30 @@ def analyze_text_to_report_pack(
     source_title: Optional[str] = None,
     source_url: Optional[str] = None,
 ) -> Dict[str, Any]:
-    evidence_bank = _build_evidence_bank(text=text, source_title=source_title, source_url=source_url, max_items=40)
-    print(f"[DBG][PASS_A][report_stub.py:241] evidence_bank_items={len(evidence_bank)}")
-    us_hits = [ev for ev in evidence_bank if ev.get(K.QUOTE, "").strip() in ("The U.S.", "The U.S")]
-    print(f"[DBG][PASS_A][report_stub.py:241] us_sentence_hits={len(us_hits)} eids={[ev.get(K.EID) for ev in us_hits]}")
+    evidence_bank = _build_evidence_bank(
+        text=text,
+        source_title=source_title,
+        source_url=source_url,
+        max_items=40,
+    )
+
+    print(
+        f"[DBG][PASS_A][report_stub.py:241] evidence_bank_items={len(evidence_bank)}",
+        file=sys.stderr,
+    )
+
+    us_hits = [
+        ev
+        for ev in evidence_bank
+        if ev.get(K.QUOTE, "").strip() in ("The U.S.", "The U.S")
+    ]
+
+    print(
+        f"[DBG][PASS_A][report_stub.py:241] us_sentence_hits={len(us_hits)} "
+        f"eids={[ev.get(K.EID) for ev in us_hits]}",
+        file=sys.stderr,
+    )
+
     facts = _extract_facts_from_evidence(evidence_bank, max_facts=40)
     claims = _build_claims_from_evidence(evidence_bank, max_claims=25)
 
