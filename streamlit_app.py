@@ -42,8 +42,44 @@ BUILD_ID = "BUILD_2026-02-03_00-45"
 # -----------------------------
 st.set_page_config(page_title="BiasLens", page_icon="🛡️", layout="wide")
 
+
+# -----------------------------
+# Auth gate — runs before ANY content renders
+# -----------------------------
+def _require_password() -> None:
+    """Block all page content until the correct password is provided.
+
+    Reads APP_PASSWORD from Streamlit Secrets (set in Cloud dashboard).
+    Login persists in session_state until browser tab is refreshed.
+    """
+    if st.session_state.get("authenticated"):
+        return
+
+    st.title("🛡️ BiasLens")
+    st.markdown("**Access restricted.** Enter the password to continue.")
+    st.caption("auth: waiting")
+    pwd = st.text_input("Password", type="password", key="_auth_pwd")
+
+    if st.button("Log in", use_container_width=True):
+        try:
+            correct = st.secrets["APP_PASSWORD"]
+        except (KeyError, FileNotFoundError):
+            st.error("APP_PASSWORD is not configured in Streamlit Secrets.")
+            st.stop()
+
+        if pwd == correct:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+
+    st.stop()
+
+
+_require_password()
+
 st.title("🛡️ BiasLens — Epistemic / Information Integrity")
-st.caption(f"Build: {BUILD_ID}")
+st.caption(f"Build: {BUILD_ID} | auth: ok")
 st.caption(
     "Evidence-indexed, claim-by-claim analysis. Omission is reported only as absence of expected context (never intent)."
 )
@@ -51,6 +87,13 @@ st.caption(
 with st.sidebar:
     st.header("Output")
     show_json = st.checkbox("Show raw JSON pack", value=False)
+
+    st.divider()
+    if st.session_state.get("authenticated"):
+        if st.button("Logout", use_container_width=True):
+            st.session_state.pop("authenticated", None)
+            st.session_state.pop("_auth_pwd", None)
+            st.rerun()
 
 tab_url, tab_text = st.tabs(["Analyze URL", "Paste Text"])
 
